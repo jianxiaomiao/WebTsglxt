@@ -1,0 +1,1348 @@
+/* ====================== 🔥 核心：外部背景层（保留你原来的所有样式，无修改） ====================== */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  position: relative;
+}
+
+/* 内容层（保留你原来的样式） */
+#app {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 1rem;
+  text-align: center;
+  position: relative;
+  z-index: 10;
+  height: 100%;
+}
+
+/* ====================== 🔥 1. 全局设计变量（天气与毛玻璃联动池） ====================== */
+:root {
+  color-scheme: light dark;
+  color: #213547;
+  /* 兜底默认（防止刚进页面时无状态闪烁） */
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
+  --glass-blur: blur(16px) saturate(120%);
+}
+
+/* 🌞 1. 晴天 (Sunny) */
+html.weather-sunny {
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-shadow: 0 8px 32px 0 rgba(253, 224, 71, 0.05); /* 阳光微黄的漫反射阴影 */
+}
+
+/* 🌥️ 2. 多云 (Cloudy) */
+html.weather-cloudy {
+  --glass-bg: rgba(240, 242, 245, 0.7); /* 偏灰冷调的玻璃，反射减弱 */
+  --glass-border: rgba(255, 255, 255, 0.4);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.08);
+}
+
+/* 🌤️ 3. 白天雨 (Sun-Rain) */
+html.weather-rain:not(.dark) {
+  --glass-bg: rgba(226, 232, 240, 0.55); /* 稍微增加透明度，让背后的雨丝更清晰 */
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --glass-shadow: 0 8px 32px 0 rgba(148, 163, 184, 0.15); /* 冷水蓝阴影 */
+}
+
+/* ====================== 🌙 暗色系天气联合处理 ====================== */
+html.dark,
+html.weather-night,
+html.weather-thunder,
+html.weather-rain.dark {
+  --el-text-color-primary: rgba(255, 255, 255, 0.9);
+  --el-text-color-secondary: rgba(255, 255, 255, 0.7);
+  --el-text-color-placeholder: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.9);
+  --el-border-color: var(--glass-border);
+}
+
+/* 🌙 4. 黑夜 (Night) */
+html.weather-night, html.dark {
+  --glass-bg: rgba(24, 30, 41, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* 🌚 5. 黑夜雨 (Moon-Rain) */
+html.weather-rain.dark {
+  --glass-bg: rgba(15, 23, 42, 0.65);
+  --glass-border: rgba(148, 163, 184, 0.15); /* 边框泛着冷水汽的反光 */
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* 🌩️ 6. 雷暴 (Thunder) */
+html.weather-thunder {
+  --glass-bg: rgba(20, 17, 26, 0.75); /* 更深邃压抑的黑，拉高对比度衬托闪电 */
+  --glass-border: rgba(139, 92, 246, 0.2); /* 玻璃边缘泛着微弱的闪电紫 */
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* ✅ 黑夜天气下的链接和按钮兜底（保留你原来的逻辑，扩充支持所有的黑夜类天气） */
+html.dark a, html.weather-night a, html.weather-thunder a, html.weather-rain.dark a {
+  color: #64b5f6;
+}
+html.dark a:hover, html.weather-night a:hover, html.weather-thunder a:hover, html.weather-rain.dark a:hover {
+  color: #90caf9;
+}
+html.dark button, html.weather-night button, html.weather-thunder button, html.weather-rain.dark button {
+  background-color: #2a2a2a;
+  color: rgba(255, 255, 255, 0.9);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+html.dark button:hover, html.weather-night button:hover, html.weather-thunder button:hover, html.weather-rain.dark button:hover {
+  border-color: #646cff;
+}
+
+/* ====================== 🔥 天气变幻渐变引擎 ====================== */
+/* 增加这一层配置，确保切换天气时，玻璃的颜色会缓慢过渡，而不是突然黑一下 */
+.glass-panel, .el-card, .el-dialog, .el-dropdown-menu, .el-popover {
+  transition: background 1.5s ease-in-out, border 1.5s ease-in-out, box-shadow 1.5s ease-in-out, transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+/* ====================== 🔥 1. 毛玻璃核心样式 (通用) ====================== */
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.5); /* 浅色模式底色 */
+  --glass-blur: blur(16px) saturate(180%);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.4);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.is-dark {
+  --glass-bg: rgba(30, 41, 59, 0.6); /* 暗色模式底色 */
+  --glass-border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+:deep(.el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.3) !important;
+  box-shadow: none !important;
+}
+
+/* 2. 覆盖所有 Element Plus 的弹出层 (Dropdown, DatePicker 等) */
+.el-popper {
+  background: var(--glass-bg) !important;
+  backdrop-filter: var(--glass-blur) !important;
+  -webkit-backdrop-filter: var(--glass-blur) !important;
+  border: var(--glass-border) !important;
+  box-shadow: var(--glass-shadow) !important;
+  border-radius: 12px !important;
+}
+
+/* 3. 清理内部项，确保透出玻璃底色 */
+.el-dropdown-menu, .el-picker-panel {
+  background: transparent !important;
+  border: none !important;
+}
+
+.el-dropdown-menu__item, .el-date-picker table td {
+  background-color: transparent !important;
+}
+
+/* 悬停效果优化 */
+.el-dropdown-menu__item:hover {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* ====================== 🔥 3. Element Plus 全局毛玻璃渗透 ====================== */
+/* 让卡片、弹窗、下拉菜单变成毛玻璃 */
+.el-card,
+.el-dialog,
+.el-dropdown-menu,
+.el-popover {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--glass-shadow) !important;
+}
+
+/* 修复 Element 卡片头部的实线，改为半透明虚线或淡线 */
+.el-card__header {
+  border-bottom: 1px solid var(--glass-border) !important;
+}
+
+/* 顶部导航栏和侧边栏（如果有用到） */
+.el-header,
+.el-menu {
+  background: transparent !important; /* 消除自带实色 */
+  background-color: var(--glass-bg) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-right: none !important;
+  border-bottom: 1px solid var(--glass-border) !important;
+}
+
+/* 强制覆盖 Element Plus 下拉菜单的默认样式 */
+:deep(.el-dropdown-menu) {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 8px;
+}
+
+/* 1. 强制清理所有下拉菜单项的默认背景，让它们彻底透明，露出底层的磨砂背景 */
+:deep(.el-dropdown-menu__item) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+/* 2. 优化悬停效果：悬停时给一个淡淡的浮层感，而不是死板的灰色 */
+:deep(.el-dropdown-menu__item:hover) {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  color: var(--el-color-primary) !important;
+}
+
+/* 4. 如果下拉箭头或 popover 还有白边，一并干掉 */
+:deep(.el-popper.is-light) {
+  background: transparent !important;
+  border: none !important;
+}
+/* 适配暗黑模式下的玻璃效果 */
+.is-dark :deep(.el-dropdown-menu) {
+  background: rgba(30, 41, 59, 0.6) !important; /* 暗色系玻璃底色 */
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+/* ====================== 🔥 ElMessage 消息提示全局毛玻璃化 ====================== */
+/* 1. 强行扒掉原生底色，注入全局玻璃变量 */
+.el-message {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(16px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(120%) !important;
+  border: 1px solid var(--glass-border) !important;
+  /* 在原有玻璃阴影基础上，增加一点浮空感 */
+  box-shadow: var(--glass-shadow), 0 15px 35px -10px rgba(0, 0, 0, 0.2) !important;
+  border-radius: 16px !important;
+  padding: 16px 24px !important;
+  /* 极其重要：抹除不同状态自带的浅色实心背景和边框 */
+  --el-message-bg-color: transparent !important;
+  --el-message-border-color: transparent !important;
+  transition: opacity 0.3s, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), top 0.4s ease !important;
+}
+
+/* 2. 统一文本颜色，依靠前方 Icon 的颜色来区分状态 (Success/Error 等) */
+.el-message .el-message__content {
+  color: var(--el-text-color-primary) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 3. 让关闭按钮 (如果有) 也融入主题 */
+.el-message .el-message__closeBtn {
+  color: var(--el-text-color-secondary) !important;
+}
+.el-message .el-message__closeBtn:hover {
+  color: var(--el-text-color-primary) !important;
+  transform: scale(1.2);
+}
+
+/* ====================== 🔥 全局 Form & Input 毛玻璃优化 ====================== */
+
+/* 1. 深度去除 Element Plus 输入框的默认实心背景 */
+:deep(.el-input__wrapper),
+:deep(.el-textarea__inner),
+:deep(.el-select__wrapper .el-input__wrapper) {
+  background-color: rgba(255, 255, 255, 0.2) !important; /* 浅色模式半透明 */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3) inset !important; /* 细微的内高光边框 */
+  backdrop-filter: blur(8px); /* 给输入框单独加一层轻微模糊 */
+  border-radius: 8px !important;
+  transition: all 0.3s ease;
+}
+
+/* 暗黑模式适配 */
+.is-dark :deep(.el-input__wrapper),
+.is-dark :deep(.el-textarea__inner),
+.is-dark :deep(.el-select__wrapper .el-input__wrapper) {
+  background-color: rgba(0, 0, 0, 0.2) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
+}
+
+/* 2. 聚焦状态：给输入框一个更亮的高光 */
+:deep(.el-input__wrapper.is-focus),
+:deep(.el-select__wrapper .el-input__wrapper.is-focus) {
+  background-color: rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 0 0 0 1px var(--el-color-primary) inset !important;
+}
+
+/* 3. 让 form-item 的标签文字更具通透感 */
+.el-form-item__label {
+  color: var(--el-text-color-regular) !important;
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* 4. 修复 disabled 状态下的背景，防止发灰 */
+:deep(.el-input.is-disabled .el-input__wrapper) {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+/* ====================== 🔥 ElMessageBox 确认弹窗全局毛玻璃化 ====================== */
+/* 1. 改造弹窗本体 */
+.el-message-box {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(20px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(120%) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--glass-shadow), 0 25px 50px -12px rgba(0, 0, 0, 0.3) !important;
+  border-radius: 16px !important;
+  padding-bottom: 10px !important;
+}
+
+/* 2. 标题和内容文字颜色同步主题 */
+.el-message-box__title {
+  color: var(--el-text-color-primary) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px;
+}
+.el-message-box__content {
+  color: var(--el-text-color-regular) !important;
+  font-size: 14px !important;
+}
+
+/* 3. 改造右上角的关闭按钮 */
+.el-message-box__headerbtn .el-message-box__close {
+  color: var(--el-text-color-secondary) !important;
+  transition: all 0.3s ease !important;
+}
+.el-message-box__headerbtn:hover .el-message-box__close {
+  color: #f56c6c !important; /* 悬停泛红提示关闭 */
+  transform: scale(1.2) rotate(90deg);
+}
+
+/* 4. 优化底部的按钮间距 */
+.el-message-box__btns {
+  padding: 10px 15px 5px !important;
+}
+
+/* 5. (可选) 让弹窗背后的暗色遮罩层也带一点微弱的毛玻璃感，更显高级 */
+.el-overlay.is-message-box {
+  background-color: rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+/* ====================== 🔥 全局 Button 毛玻璃适配 ====================== */
+
+/* 1. 基础毛玻璃滤镜层：为所有按钮统一添加模糊效果和微阴影 */
+.el-button {
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); /* 增加一点悬浮的立体感 */
+  transition: all 0.3s ease;
+}
+
+/* 2. Default (默认/白色) - 覆盖原生变量，改为半透明 */
+.el-button {
+  --el-button-bg-color: rgba(255, 255, 255, 0.4);
+  --el-button-border-color: rgba(255, 255, 255, 0.5);
+  --el-button-hover-bg-color: rgba(255, 255, 255, 0.7);
+  --el-button-hover-border-color: rgba(255, 255, 255, 0.8);
+}
+
+/* 🌙 暗黑模式下的 Default 按钮适配 */
+html.dark .el-button {
+  --el-button-bg-color: rgba(255, 255, 255, 0.1);
+  --el-button-border-color: rgba(255, 255, 255, 0.2);
+  --el-button-hover-bg-color: rgba(255, 255, 255, 0.2);
+  --el-button-hover-border-color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* 3. Primary (蓝色) - 提取主色调并赋予 60% 透明度 */
+.el-button--primary {
+  --el-button-bg-color: rgba(64, 158, 255, 0.6) !important;
+  --el-button-border-color: rgba(64, 158, 255, 0.4) !important;
+  --el-button-hover-bg-color: rgba(64, 158, 255, 0.8) !important;
+  --el-button-hover-border-color: rgba(64, 158, 255, 0.6) !important;
+}
+
+/* 4. Success (绿色) */
+.el-button--success {
+  --el-button-bg-color: rgba(103, 194, 58, 0.6) !important;
+  --el-button-border-color: rgba(103, 194, 58, 0.4) !important;
+  --el-button-hover-bg-color: rgba(103, 194, 58, 0.8) !important;
+  --el-button-hover-border-color: rgba(103, 194, 58, 0.6) !important;
+}
+
+/* 5. Danger (红色) */
+.el-button--danger {
+  --el-button-bg-color: rgba(245, 108, 108, 0.6) !important;
+  --el-button-border-color: rgba(245, 108, 108, 0.4) !important;
+  --el-button-hover-bg-color: rgba(245, 108, 108, 0.8) !important;
+  --el-button-hover-border-color: rgba(245, 108, 108, 0.6) !important;
+}
+
+/* （可选）禁用状态的通透化处理，防止发灰变糊 */
+.el-button.is-disabled,
+.el-button.is-disabled:hover {
+  backdrop-filter: blur(4px);
+  opacity: 0.6;
+}
+
+/* ====================== 🔥 头像毛玻璃适配 ====================== */
+
+.glass-avatar {
+  /* 1. 将原本的实心蓝替换为 50% 透明度的主题蓝 */
+  background: rgba(64, 158, 255, 0.5) !important;
+  color: #fff !important;
+  font-size: 30px !important;
+  font-weight: 500;
+
+  /* 2. 核心：毛玻璃滤镜 */
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+
+  /* 3. 质感提升：增加内圈高光边框和微弱悬浮阴影 */
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+
+  /* 确保头像内的文字绝对居中 */
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* 🌙 暗黑模式适配 */
+html.dark .glass-avatar {
+  /* 暗黑模式下降低背景透明度，防止太亮刺眼 */
+  background: rgba(64, 158, 255, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* ====================== 🔥 2. 通用毛玻璃类 ====================== */
+.glass-panel {
+  background: var(--glass-bg) !important;
+  /* 核心特效：模糊 16px，并提升 120% 的饱和度让背后流体色彩更通透 */
+  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--glass-shadow) !important;
+  border-radius: 12px; /* 圆润的边角更符合拟物化 */
+}
+
+/* ====================== 🌧️ 物理级水滴滑落特效 ====================== */
+
+/* 1. 锁定目标面板，开启相对定位与溢出隐藏，防止水滴滑出面板边缘 */
+/* 🚀 修复：利用 :not() 排除胶囊、抽屉、天气面板等悬浮组件，防止它们的 fixed 定位被破坏拉长 */
+html.weather-rain .glass-panel:not(.co-read-capsule):not(.co-read-drawer):not(.weather-test-panel):not(.liquid-guide-btn),
+html.weather-thunder .glass-panel:not(.co-read-capsule):not(.co-read-drawer):not(.weather-test-panel):not(.liquid-guide-btn),
+html.weather-rain .el-card,
+html.weather-thunder .el-card,
+html.weather-rain.dark .el-card {
+  position: relative;
+  overflow: hidden;
+}
+
+/* 2. 拟真水滴基础材质（高光折射 + 底部反光 + 透视畸变） */
+html.weather-rain .glass-panel:not(.co-read-capsule):not(.co-read-drawer):not(.weather-test-panel):not(.liquid-guide-btn)::before,
+html.weather-thunder .glass-panel:not(.co-read-capsule):not(.co-read-drawer):not(.weather-test-panel):not(.liquid-guide-btn)::before,
+html.weather-rain .glass-panel:not(.co-read-capsule):not(.co-read-drawer):not(.weather-test-panel):not(.liquid-guide-btn)::after,
+html.weather-thunder .glass-panel:not(.co-read-capsule):not(.co-read-drawer):not(.weather-test-panel):not(.liquid-guide-btn)::after,
+html.weather-rain .el-card::before,
+html.weather-thunder .el-card::before,
+html.weather-rain .el-card::after,
+html.weather-thunder .el-card::after {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 12px;
+  /* 模拟上尖下圆的水滴形态 */
+  border-radius: 50% 50% 40% 40% / 60% 60% 40% 40%;
+  background-color: rgba(255, 255, 255, 0.05);
+  box-shadow:
+          inset 0 0 2px rgba(255, 255, 255, 0.4),
+          inset 0 -4px 4px rgba(255, 255, 255, 0.7),
+          0 2px 4px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0;
+}
+
+/* 3. 一号水滴：挂在面板偏左侧 */
+html.weather-rain .glass-panel:not(.co-read-capsule):not(.co-read-drawer):not(.weather-test-panel):not(.liquid-guide-btn)::before,
+html.weather-thunder .glass-panel:not(.co-read-capsule):not(.co-read-drawer):not(.weather-test-panel):not(.liquid-guide-btn)::before,
+html.weather-rain .el-card::before,
+html.weather-thunder .el-card::before {
+  left: 20%;
+  animation: waterDropSlide1 4.5s infinite cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 4. 二号水滴：挂在面板偏右侧，设置不同的延时、速度和大小，打破动画规律感 */
+html.weather-rain .glass-panel:not(.co-read-capsule):not(.co-read-drawer):not(.weather-test-panel):not(.liquid-guide-btn)::after,
+html.weather-thunder .glass-panel:not(.co-read-capsule):not(.co-read-drawer):not(.weather-test-panel):not(.liquid-guide-btn)::after,
+html.weather-rain .el-card::after,
+html.weather-thunder .el-card::after {
+  left: 75%;
+  width: 8px;
+  height: 15px;
+  animation: waterDropSlide2 6s infinite cubic-bezier(0.5, 0, 0.3, 1);
+  animation-delay: 2s;
+}
+
+/* 5. 物理引擎关键帧（动能转化模拟） */
+/* top: 控制在响应式高度中的下滑比例 */
+/* translateX: 模拟扭曲的滑落路径 */
+/* scaleY: 模拟水滴拉扯与堆积变形 */
+@keyframes waterDropSlide1 {
+  0%   { top: -5%; opacity: 0; transform: translateX(0) scaleY(1); }
+  5%   { opacity: 0.8; }
+  20%  { top: 15%; transform: translateX(4px) scaleY(1.3); } /* 重力加速下滑，拉扯变长 */
+  35%  { top: 30%; transform: translateX(2px) scaleY(0.9); } /* 遇到细微摩擦力，堆积变胖 */
+  55%  { top: 55%; transform: translateX(7px) scaleY(1.4); } /* 突破摩擦力继续下滑，向右微转 */
+  75%  { top: 75%; transform: translateX(3px) scaleY(1.1); opacity: 0.8; }
+  90%  { top: 95%; opacity: 0; }
+  100% { top: 100%; opacity: 0; transform: translateX(5px) scaleY(1); }
+}
+
+@keyframes waterDropSlide2 {
+  0%   { top: -5%; opacity: 0; transform: translateX(0) scaleY(1); }
+  10%  { opacity: 0.7; }
+  25%  { top: 25%; transform: translateX(-5px) scaleY(1.2); } /* 大水滴偏向左侧滑动 */
+  45%  { top: 40%; transform: translateX(-1px) scaleY(0.8); } /* 停顿蓄能 */
+  65%  { top: 60%; transform: translateX(-6px) scaleY(1.3); } /* 再次加速 */
+  85%  { top: 85%; transform: translateX(-3px) scaleY(1.1); opacity: 0.7; }
+  95%  { top: 95%; opacity: 0; }
+  100% { top: 100%; opacity: 0; transform: translateX(-4px) scaleY(1); }
+}
+
+/* ================== 🌪️ 大风天气主题 ================== */
+html[data-weather="wind"] {
+  --glass-bg: rgba(220, 215, 205, 0.7); /* 白天：带点沙尘的米灰色 */
+  --glass-border: rgba(255, 255, 255, 0.4);
+  background: linear-gradient(135deg, #d3cbb8 0%, #b8af9c 100%);
+}
+html.dark[data-weather="wind"] {
+  --glass-bg: rgba(50, 48, 45, 0.7); /* 黑夜：深灰褐色 */
+  --glass-border: rgba(80, 78, 75, 0.4);
+  background: linear-gradient(135deg, #383431 0%, #1f1d1b 100%);
+}
+
+/* ================== ❄️ 下雪天气主题 ================== */
+html[data-weather="snow"] {
+  --glass-bg: rgba(240, 248, 255, 0.8); /* 白天：极地冰蓝色 */
+  --glass-border: rgba(255, 255, 255, 0.7);
+  background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+}
+html.dark[data-weather="snow"] {
+  --glass-bg: rgba(15, 23, 42, 0.8); /* 黑夜：深邃寒夜蓝 */
+  --glass-border: rgba(51, 65, 85, 0.4);
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+}
+
+/* ================== 🔥 新增动画：风吹落叶 (从左往右) ================== */
+.wind-leaf {
+  position: absolute;
+  animation: wind-drift linear infinite;
+  will-change: transform, opacity;
+}
+@keyframes wind-drift {
+  0% { opacity: 0; transform: translate(0, 0) rotate3d(1, 1, 1, 0deg); }
+  15% { opacity: 0.9; }
+  85% { opacity: 0.9; }
+  100% { opacity: 0; transform: translate(120vw, 30vh) rotate3d(1, 2, 1, 1080deg); } /* 向右飞越整个屏幕 */
+}
+
+/* 龙卷风打底旋转 */
+.tornado-bottom {
+  position: absolute;
+  bottom: -20px;
+  right: 15%;
+  font-size: 100px;
+  opacity: 0.6;
+  animation: tornado-spin 1.5s linear infinite;
+  pointer-events: none;
+}
+@keyframes tornado-spin {
+  0% { transform: rotateY(0deg) skewX(-5deg); }
+  50% { transform: rotateY(180deg) skewX(5deg); }
+  100% { transform: rotateY(360deg) skewX(-5deg); }
+}
+
+/* ================== 🔥 新增动画：雪花飘落 (右上到左下) ================== */
+.snow-flake {
+  position: absolute;
+  animation: snow-drift linear infinite;
+  will-change: transform, opacity;
+}
+@keyframes snow-drift {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+  20% { opacity: 0.9; }
+  80% { opacity: 0.9; }
+  100% { opacity: 0; transform: translate(-80vw, 110vh) rotate(360deg); } /* 向左下角吹动 */
+}
+
+/* 黑夜雪人闪烁 */
+.snowman-star {
+  position: absolute;
+  animation: snowman-twinkle ease-in-out infinite alternate;
+}
+@keyframes snowman-twinkle {
+  0% { opacity: 0.1; transform: scale(0.8); filter: blur(2px); }
+  100% { opacity: 0.9; transform: scale(1.1); filter: blur(0); }
+}
+
+/* 选中文本时，变成温柔的半透明果冻色，并且带一点发光效果 */
+::selection {
+  background: rgba(100, 181, 246, 0.4); /* 浅蓝色半透明 */
+  color: inherit;
+  text-shadow: 0 0 8px rgba(100, 181, 246, 0.8); /* 魔法发光 */
+}
+
+/* 你甚至可以配合暗黑模式 */
+html.dark ::selection {
+  background: rgba(255, 213, 79, 0.3); /* 暗黑模式下用暖金色的荧光笔 */
+  text-shadow: 0 0 8px rgba(255, 213, 79, 0.8);
+}
+
+/* =========================================================
+   💧 终极预设 B：液态水晶（Liquid Glass / Clear Resin）- 完全合体版
+   ========================================================= */
+
+/* --- 1. 核心光学变量池（底座配方） - 提取可着色部分 --- */
+html.preset-liquid {
+  /* 基础色调，用于着色 */
+  --liquid-main-hue: 255, 255, 255; /* 白 */
+  --liquid-shadow-hue: 10, 25, 70; /* 蓝 */
+  --liquid-ambient-hue: 0, 0, 0; /* 黑 */
+
+  /* 基础：线性渐变背景 */
+  --glass-bg: linear-gradient(135deg, rgba(var(--liquid-main-hue), 0.45) 0%, rgba(var(--liquid-main-hue), 0.08) 40%, rgba(var(--liquid-main-hue), 0.02) 60%, rgba(var(--liquid-main-hue), 0.3) 100%);
+  /* 基础：滤镜 */
+  --glass-blur: blur(10px) saturate(160%) contrast(115%);
+  --glass-border: none;
+  /* 基础：复杂阴影池 - 用于创建饱满感 */
+  --glass-shadow:
+          inset 0 1px 1px 0 rgba(var(--liquid-main-hue), 0.95), /* 顶部高光 */
+          inset 0 -1px 1px 0 rgba(var(--liquid-main-hue), 0.4), /* 底部反光 */
+          inset -1px 0 1px 0 rgba(var(--liquid-main-hue), 0.25), /* 侧面反光 */
+          inset 1px 0 1px 0 rgba(var(--liquid-main-hue), 0.25),
+          inset 0 25px 30px -15px rgba(var(--liquid-main-hue), 0.7), /* 内部大高光 */
+          inset 0 -20px 25px -10px rgba(var(--liquid-ambient-hue), 0.08), /* 底部环境阴影 */
+          0 15px 35px -5px rgba(var(--liquid-shadow-hue), 0.15), /* 外部投影 - 关键着色项 */
+          0 0 20px 2px rgba(var(--liquid-main-hue), 0.25); /* 外发光 */
+}
+
+/* 暗黑模式下的黑曜石水滴变量 - 提取可着色部分 */
+html.dark.preset-liquid {
+  /* 暗黑模式下的基础色调 */
+  --liquid-main-hue: 40, 55, 80; /* 暗蓝白 */
+  --liquid-shadow-hue: 100, 181, 246; /* 主色调荧光 (蓝色) */
+  --liquid-ambient-hue: 2, 6, 23; /* 深邃黑 */
+
+  /* 暗黑基础：背景 */
+  --glass-bg: linear-gradient(135deg, rgba(var(--liquid-main-hue), 0.5) 0%, rgba(15, 23, 42, 0.2) 50%, rgba(var(--liquid-ambient-hue), 0.45) 100%);
+  /* 暗黑基础：滤镜 */
+  --glass-blur: blur(12px) saturate(140%) contrast(125%);
+  /* 暗黑基础：阴影 */
+  --glass-shadow:
+          inset 0 1px 1px 0 rgba(var(--liquid-main-hue), 0.5), /* 顶部高光 */
+          inset 0 -1px 1px 0 rgba(var(--liquid-main-hue), 0.15),
+          inset 0 25px 30px -15px rgba(var(--liquid-main-hue), 0.15),
+          inset 0 -20px 25px -10px rgba(0, 0, 0, 0.85), /* 底部环境阴影 */
+          0 20px 40px -10px rgba(0, 0, 0, 0.8), /* 外部投影 */
+          0 0 20px 0 rgba(var(--liquid-shadow-hue), 0.15); /* 外发光 - 关键着色项 */
+}
+
+/* --- 2. 大容器渗透、表单、按钮优化（保留之前的逻辑，不修改） --- */
+html.preset-liquid .glass-panel,
+html.preset-liquid .el-card,
+html.preset-liquid .el-dialog,
+html.preset-liquid .el-dropdown-menu,
+html.preset-liquid .el-popper,
+html.preset-liquid .el-message,
+html.preset-liquid .el-message-box,
+html.preset-liquid .el-drawer{
+  border-radius: 20px !important;
+  border: none !important;
+  background: var(--glass-bg) !important;
+  box-shadow: var(--glass-shadow) !important;
+}
+/* 1. 彻底剔除伪类毒药，原生类名无差别穿透 DOM 树 */
+html.preset-liquid .el-input__wrapper,
+html.preset-liquid .el-textarea__inner,
+html.preset-liquid .el-select__wrapper {
+  background-color: rgba(255, 255, 255, 0.18) !important;
+  border: none !important;
+  box-shadow:
+          inset 0 2px 5px rgba(0, 0, 0, 0.12),
+          inset 0 -1px 1px rgba(255, 255, 255, 0.7),
+          0 1px 0 rgba(255, 255, 255, 0.3) !important;
+  border-radius: 12px !important;
+  color: var(--el-text-color-primary) !important;
+
+  /* 🔥 极其霸道：强行撕掉 Element Plus 在抽屉/弹窗里向下私自派发的实心外衣 */
+  --el-input-bg-color: transparent !important;
+  --el-input-border-color: transparent !important;
+  --el-select-border-color: transparent !important;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+}
+
+/* 2. 聚焦时的魔法呼吸充盈感 */
+html.preset-liquid .el-input__wrapper.is-focus,
+html.preset-liquid .el-textarea__inner:focus,
+html.preset-liquid .el-select__wrapper.is-focused {
+  background-color: rgba(255, 255, 255, 0.35) !important;
+  box-shadow:
+          inset 0 2px 6px rgba(0, 0, 0, 0.15),
+          inset 0 -1px 2px var(--el-color-primary),
+          0 0 12px rgba(64, 158, 255, 0.4) !important;
+}
+
+/* 3. 暗黑模式下的深邃墨水池内凹质感 */
+html.dark.preset-liquid .el-input__wrapper,
+html.dark.preset-liquid .el-textarea__inner,
+html.dark.preset-liquid .el-select__wrapper {
+  background-color: rgba(0, 0, 0, 0.35) !important;
+  box-shadow:
+          inset 0 2px 5px rgba(0, 0, 0, 0.6),
+          inset 0 -1px 1px rgba(255, 255, 255, 0.12) !important;
+  color: #E2E8F0 !important;
+}
+
+html.dark.preset-liquid .el-input__wrapper.is-focus,
+html.dark.preset-liquid .el-textarea__inner:focus,
+html.dark.preset-liquid .el-select__wrapper.is-focused {
+  background-color: rgba(15, 23, 42, 0.5) !important;
+  box-shadow:
+          inset 0 2px 6px rgba(0, 0, 0, 0.8),
+          inset 0 -1px 2px #64B5F6,
+          0 0 12px rgba(100, 181, 246, 0.3) !important;
+}
+
+/* 4. 顺手把 Select 下拉菜单吐出来的那个实心白板 Popper 浮层也给玻璃化 */
+.el-select-dropdown__item.is-hovering {
+  background-color: rgba(100, 181, 246, 0.25) !important;
+  backdrop-filter: blur(4px);
+  border-radius: 6px;
+}
+html.preset-liquid .el-button {
+  border-radius: 14px !important;
+  border: none !important;
+}
+html.preset-liquid .el-button--primary {
+  background: linear-gradient(135deg, rgba(100, 181, 246, 0.8) 0%, rgba(30, 136, 229, 0.8) 100%) !important;
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.8), inset 0 -2px 4px rgba(0, 0, 0, 0.2), 0 6px 16px rgba(30, 136, 229, 0.3) !important;
+}
+html.preset-liquid .el-button--primary:active {
+  transform: scale(0.96);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* 顺手把 Drawer 自带的丑陋白色 Header 擦除干净 */
+.el-drawer__header {
+  margin-bottom: 0 !important;
+  padding: 16px 20px 8px !important;
+  color: var(--el-text-color-primary) !important;
+  font-weight: bold !important;
+}
+
+/* --- 3. 天气与液态深度融合：着色引擎 --- */
+
+/* 🌞 3.1 晴天液态 (Sunny Liquid) */
+html.preset-liquid.weather-sunny {
+  /* 融入阳光微黄 */
+  --liquid-shadow-hue: 253, 224, 71;
+  /* 调整特定的内部大高光，增加一抹黄，使其更具通透感 */
+  --glass-shadow:
+          inset 0 1px 1px 0 rgba(var(--liquid-main-hue), 0.95),
+          inset 0 -1px 1px 0 rgba(var(--liquid-main-hue), 0.4),
+          inset -1px 0 1px 0 rgba(var(--liquid-main-hue), 0.25),
+          inset 1px 0 1px 0 rgba(var(--liquid-main-hue), 0.25),
+          inset 0 25px 30px -15px rgba(253, 224, 71, 0.15), /* 内部高光微黄 */
+          inset 0 -20px 25px -10px rgba(var(--liquid-ambient-hue), 0.08),
+          0 15px 35px -5px rgba(var(--liquid-shadow-hue), 0.05), /* 融入黄光阴影 */
+          0 0 20px 2px rgba(var(--liquid-main-hue), 0.25);
+}
+
+/* 🌥️ 3.2 多云液态 (Cloudy Liquid) */
+html.preset-liquid.weather-cloudy {
+  /* 灰色阴影 */
+  --liquid-shadow-hue: 128, 128, 128;
+  /* 降低饱和度，增加灰色反射 */
+  --glass-blur: blur(10px) saturate(110%) contrast(110%);
+  --glass-shadow:
+          inset 0 1px 1px 0 rgba(var(--liquid-main-hue), 0.95),
+          inset 0 -1px 1px 0 rgba(var(--liquid-main-hue), 0.4),
+          inset -1px 0 1px 0 rgba(var(--liquid-main-hue), 0.25),
+          inset 1px 0 1px 0 rgba(var(--liquid-main-hue), 0.25),
+          inset 0 25px 30px -15px rgba(200, 200, 200, 0.1), /* 内部高光偏灰 */
+          inset 0 -20px 25px -10px rgba(var(--liquid-ambient-hue), 0.1),
+          0 15px 35px -5px rgba(var(--liquid-shadow-hue), 0.12), /* 投影偏灰 */
+          0 0 20px 2px rgba(var(--liquid-main-hue), 0.25);
+}
+
+/* 🌤️ 3.3 白天雨液态 (Sun-Rain Liquid) */
+html.preset-liquid.weather-rain:not(.dark) {
+  /* 偏灰蓝的玻璃底 */
+  --liquid-main-hue: 226, 232, 240;
+  /* 冷水蓝 */
+  --liquid-shadow-hue: 100, 181, 246;
+  /* 增加透明度，增加冷汽反光 */
+  --glass-bg: linear-gradient(135deg, rgba(var(--liquid-main-hue), 0.4) 0%, rgba(var(--liquid-main-hue), 0.05) 40%, rgba(var(--liquid-main-hue), 0.01) 60%, rgba(var(--liquid-main-hue), 0.25) 100%);
+  --glass-shadow:
+          inset 0 1px 1px 0 rgba(var(--liquid-main-hue), 0.95),
+          inset 0 -1px 1px 0 rgba(var(--liquid-main-hue), 0.4),
+          inset -1px 0 1px 0 rgba(var(--liquid-main-hue), 0.25),
+          inset 1px 0 1px 0 rgba(var(--liquid-main-hue), 0.25),
+          inset 0 25px 30px -15px rgba(100, 181, 246, 0.1), /* 内部大高光泛冷蓝 */
+          inset 0 -20px 25px -10px rgba(var(--liquid-ambient-hue), 0.08),
+          0 15px 35px -5px rgba(var(--liquid-shadow-hue), 0.15),
+          0 0 20px 2px rgba(var(--liquid-main-hue), 0.25);
+}
+
+/* 🌙 3.4 黑夜液态 (Night Liquid) - 沿用基础暗黑液态，无需修改 */
+
+/* 🌚 3.5 黑夜雨液态 (Moon-Rain Liquid) */
+html.preset-liquid.dark.weather-rain {
+  /* 冷汽蓝白反光 */
+  --liquid-shadow-hue: 148, 163, 184;
+  /* 增加冷汽反光边框和冷水蓝阴影 */
+  --glass-shadow:
+          inset 0 1px 1px 0 rgba(var(--liquid-main-hue), 0.5),
+          inset 0 -1px 1px 0 rgba(var(--liquid-main-hue), 0.15),
+          inset 0 25px 30px -15px rgba(var(--liquid-main-hue), 0.15),
+          inset 0 -20px 25px -10px rgba(0, 0, 0, 0.85),
+          0 20px 40px -10px rgba(0, 0, 0, 0.8),
+          0 0 20px 0 rgba(var(--liquid-shadow-hue), 0.1), /* 冷汽反光 */
+          0 0 0 1px rgba(var(--liquid-shadow-hue), 0.05); /* 边框泛着冷汽 */
+}
+
+/* 🌩️ 3.6 雷暴液态 (Thunder Liquid) */
+html.preset-liquid.weather-thunder {
+  /* 更深邃压抑的黑 */
+  --liquid-ambient-hue: 20, 17, 26;
+  /* 闪电紫 */
+  --liquid-shadow-hue: 139, 92, 246;
+  /* 拉高对比度衬托闪电紫 */
+  --glass-blur: blur(12px) saturate(160%) contrast(140%);
+  --glass-shadow:
+          inset 0 1px 1px 0 rgba(var(--liquid-main-hue), 0.5),
+          inset 0 -1px 1px 0 rgba(var(--liquid-main-hue), 0.15),
+          inset 0 25px 30px -15px rgba(var(--liquid-main-hue), 0.15),
+          inset 0 -20px 25px -10px rgba(0, 0, 0, 0.85),
+          0 20px 40px -10px rgba(0, 0, 0, 0.8),
+          0 0 20px 0 rgba(var(--liquid-shadow-hue), 0.15), /* 外部紫光 */
+          0 0 0 1px rgba(var(--liquid-shadow-hue), 0.1); /* 边框泛紫 */
+}
+
+/* ================== 🌪️ 3.7 大风液态 ================== */
+html.preset-liquid[data-weather="wind"] {
+  /* 白天：沙尘米灰 */
+  --liquid-main-hue: 220, 215, 205;
+  /* 阴影米灰 */
+  --liquid-shadow-hue: 184, 175, 156;
+  /* 整体色调调黄灰 */
+  --glass-bg: linear-gradient(135deg, rgba(var(--liquid-main-hue), 0.45) 0%, rgba(var(--liquid-main-hue), 0.08) 40%, rgba(var(--liquid-main-hue), 0.02) 60%, rgba(var(--liquid-main-hue), 0.3) 100%);
+  --glass-shadow:
+          inset 0 1px 1px 0 rgba(var(--liquid-main-hue), 0.95),
+          inset 0 -1px 1px 0 rgba(var(--liquid-main-hue), 0.4),
+          inset -1px 0 1px 0 rgba(var(--liquid-main-hue), 0.25),
+          inset 1px 0 1px 0 rgba(var(--liquid-main-hue), 0.25),
+          inset 0 25px 30px -15px rgba(var(--liquid-main-hue), 0.5), /* 内部大高光泛米灰 */
+          inset 0 -20px 25px -10px rgba(var(--liquid-ambient-hue), 0.08),
+          0 15px 35px -5px rgba(var(--liquid-shadow-hue), 0.15), /* 投影米灰 */
+          0 0 20px 2px rgba(var(--liquid-main-hue), 0.25);
+}
+
+/* ================== ❄️ 3.8 下雪液态 ================== */
+html.preset-liquid[data-weather="snow"] {
+  /* 白天：极地冰蓝 */
+  --liquid-main-hue: 240, 248, 255;
+  /* 阴影冰蓝 */
+  --liquid-shadow-hue: 186, 230, 253;
+  /* 整体色调调冰蓝，降低对比度增加雪感 */
+  --glass-blur: blur(10px) saturate(140%) contrast(105%);
+  --glass-bg: linear-gradient(135deg, rgba(var(--liquid-main-hue), 0.4) 0%, rgba(var(--liquid-main-hue), 0.05) 40%, rgba(var(--liquid-main-hue), 0.01) 60%, rgba(var(--liquid-main-hue), 0.3) 100%);
+  --glass-shadow:
+          inset 0 1px 1px 0 rgba(var(--liquid-main-hue), 0.95),
+          inset 0 -1px 1px 0 rgba(var(--liquid-main-hue), 0.4),
+          inset -1px 0 1px 0 rgba(var(--liquid-main-hue), 0.25),
+          inset 1px 0 1px 0 rgba(var(--liquid-main-hue), 0.25),
+          inset 0 25px 30px -15px rgba(var(--liquid-main-hue), 0.5), /* 内部大高光泛冰蓝 */
+          inset 0 -20px 25px -10px rgba(var(--liquid-ambient-hue), 0.08),
+          0 15px 35px -5px rgba(var(--liquid-shadow-hue), 0.15), /* 投影冰蓝 */
+          0 0 20px 2px rgba(var(--liquid-main-hue), 0.25);
+}
+
+/* =========================================================
+   🔥 强行渗透 Driver.js 气泡弹窗为“液态水晶 / 玻璃树脂”风
+   ========================================================= */
+
+/* 1. 改造背景遮罩层：由死黑变成带有一点点深空蓝的通透暗场 */
+div#driver-page-overlay {
+  background: rgba(15, 23, 42, 0.75) !important;
+  backdrop-filter: blur(3px) !important;
+}
+
+/* 2. 改造气泡卡片本体 */
+.driver-popover {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(16px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(140%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.35) !important;
+  box-shadow:
+          0 20px 40px -15px rgba(0, 0, 0, 0.5),
+          inset 0 1px 0 0 rgba(255, 255, 255, 0.6) !important;
+  border-radius: 20px !important;
+  padding: 20px !important;
+  color: var(--el-text-color-primary) !important;
+}
+
+/* 3. 气泡小箭头的白边消除 */
+.driver-popover-arrow {
+  display: none !important; /* 原生箭头极难模拟毛玻璃折射，最显高级的做法是直接隐藏，靠浮力感支撑 */
+}
+
+/* 4. 标题文字质感 */
+.driver-popover-title {
+  font-size: 18px !important;
+  font-weight: 600 !important;
+  color: #64b5f6 !important;
+  letter-spacing: 0.5px;
+  text-shadow: 0 0 12px rgba(100, 181, 246, 0.4);
+  margin-bottom: 8px !important;
+}
+
+/* 5. 描述文字 */
+.driver-popover-description {
+  color: rgba(255, 255, 255, 0.85) !important;
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+}
+
+/* 6. 底部进度条文字 */
+.driver-popover-footer .driver-popover-progress-text {
+  color: rgba(255, 255, 255, 0.4) !important;
+  font-size: 12px !important;
+}
+
+/* 7. 史莱姆化：下一步 / 上一步按钮 */
+.driver-popover-footer button {
+  border-radius: 12px !important;
+  padding: 6px 14px !important;
+  font-size: 13px !important;
+  border: none !important;
+  transition: all 0.25s ease !important;
+}
+
+/* “下一步”主按钮 */
+.driver-popover-footer .driver-popover-next-btn {
+  background: linear-gradient(135deg, rgba(100, 181, 246, 0.9) 0%, rgba(30, 136, 229, 0.9) 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(30, 136, 229, 0.3), inset 0 1px 1px rgba(255,255,255,0.5) !important;
+}
+.driver-popover-footer .driver-popover-next-btn:hover {
+  transform: translateY(-1px) scale(1.03);
+  box-shadow: 0 6px 16px rgba(30, 136, 229, 0.5), inset 0 1px 1px rgba(255,255,255,0.8) !important;
+}
+
+/* “上一步”次按钮 */
+.driver-popover-footer .driver-popover-prev-btn {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+.driver-popover-footer .driver-popover-prev-btn:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+/* =========================================================
+   8. 气泡右上角：液态关闭按钮 (X)
+   ========================================================= */
+.driver-popover-close-btn {
+  position: absolute !important;
+  top: 16px !important;
+  right: 16px !important;
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 50% !important; /* 强制变成小圆球 */
+  background: rgba(255, 255, 255, 0.15) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+  /* 抹除原生样式 */
+  -webkit-appearance: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  text-shadow: none !important;
+}
+
+/* 🖱️ 悬停特效：泛起微弱的危险红，并带一点点旋转的魔法感 */
+.driver-popover-close-btn:hover {
+  background: rgba(245, 108, 108, 0.75) !important;
+  color: #ffffff !important;
+  transform: rotate(90deg) scale(1.15) !important; /* 悬停时顺时针旋转90度放大 */
+  box-shadow:
+          0 4px 12px rgba(245, 108, 108, 0.4),
+          inset 0 1px 2px rgba(255, 255, 255, 0.6) !important;
+  border-color: rgba(245, 108, 108, 0.4) !important;
+}
+
+/* 👆 按压特效：凹陷感 */
+.driver-popover-close-btn:active {
+  transform: rotate(90deg) scale(0.95) !important;
+}
+
+/* 隐藏原本 driver.js 可能自带的奇怪 svg 轮廓，确保纯粹 */
+.driver-popover-close-btn svg {
+  width: 14px !important;
+  height: 14px !important;
+  fill: currentColor !important;
+}
+/* =========================================================
+   ✨ 左上角悬浮引导按钮 (液态魔法球)
+   ========================================================= */
+.liquid-guide-btn {
+  /* 1. 悬浮定位 */
+  position: fixed;
+  top: 24px;
+  left: 24px;
+  z-index: 9999; /* 确保它永远在最上层，不被任何组件挡住 */
+
+  /* 2. 圆形与尺寸 */
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  cursor: pointer;
+
+  /* 3. 液态水晶材质 (自动读取你的主题变量) */
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+
+  /* 4. 充盈的立体高光阴影 */
+  box-shadow:
+          0 8px 16px rgba(0, 0, 0, 0.1),
+          inset 0 2px 4px rgba(255, 255, 255, 0.8),
+          inset 0 -2px 4px rgba(0, 0, 0, 0.1);
+
+  color: var(--el-text-color-primary);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+/* 🖱️ 悬停状态：魔法球亮起并微微上浮 */
+.liquid-guide-btn:hover {
+  transform: translateY(-3px) scale(1.05);
+  box-shadow:
+          0 12px 24px rgba(0, 0, 0, 0.15),
+          inset 0 2px 6px rgba(255, 255, 255, 0.9),
+          0 0 20px rgba(100, 181, 246, 0.5); /* 底部漏出微弱的蓝色魔法光晕 */
+}
+
+/* 👆 按压状态：按进水洼里的感觉 */
+.liquid-guide-btn:active {
+  transform: translateY(1px) scale(0.95);
+  box-shadow:
+          0 4px 8px rgba(0, 0, 0, 0.1),
+          inset 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* =========================================================
+   🔥 Element Plus 分页组件 (el-pagination) 全局毛玻璃与液态化
+   ========================================================= */
+
+/* 1. 强行干掉分页容器自带的背景色 */
+.el-pagination {
+  --el-pagination-bg-color: transparent !important;
+  --el-pagination-button-bg-color: transparent !important;
+  --el-pagination-hover-color: var(--el-color-primary) !important;
+  padding: 10px 0;
+}
+
+/* 2. 改造页码数字块 (li) 和 翻页按钮 (< >) */
+.el-pagination button,
+.el-pager li {
+  background: rgba(255, 255, 255, 0.15) !important; /* 半透玻璃底 */
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  border-radius: 8px !important;
+  margin: 0 4px !important;
+  color: var(--el-text-color-primary) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+  transition: all 0.3s ease !important;
+}
+
+/* 3. 悬停态：微光浮起 */
+.el-pagination button:hover:not(:disabled),
+.el-pager li:hover:not(.is-active) {
+  background: rgba(255, 255, 255, 0.35) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08), inset 0 1px 2px rgba(255, 255, 255, 0.6);
+  color: var(--el-color-primary) !important;
+}
+
+/* 4. 激活态：液态主题色注入 */
+.el-pager li.is-active {
+  background: linear-gradient(135deg, rgba(64, 158, 255, 0.7) 0%, rgba(30, 136, 229, 0.7) 100%) !important;
+  color: #fff !important;
+  border-color: rgba(64, 158, 255, 0.4) !important;
+  box-shadow: 0 4px 12px rgba(30, 136, 229, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+  font-weight: bold;
+}
+
+/* 5. 禁用态：降低透明度，取消悬浮 */
+.el-pagination button:disabled {
+  opacity: 0.4;
+  background: rgba(0, 0, 0, 0.05) !important;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+}
+
+/* ================= 🌙 暗黑模式下的分页适配 ================= */
+html.dark .el-pagination button,
+html.dark .el-pager li {
+  background: rgba(0, 0, 0, 0.25) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+html.dark .el-pagination button:hover:not(:disabled),
+html.dark .el-pager li:hover:not(.is-active) {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #90caf9 !important;
+}
+
+/* ================= 💧 液态主题下的分页极致穿透 ================= */
+html.preset-liquid .el-pagination button,
+html.preset-liquid .el-pager li {
+  border: none !important;
+  background-color: rgba(255, 255, 255, 0.18) !important;
+  box-shadow:
+          inset 0 2px 5px rgba(0, 0, 0, 0.12),
+          inset 0 -1px 1px rgba(255, 255, 255, 0.5),
+          0 1px 0 rgba(255, 255, 255, 0.2) !important;
+}
+
+html.dark.preset-liquid .el-pagination button,
+html.dark.preset-liquid .el-pager li {
+  background-color: rgba(0, 0, 0, 0.35) !important;
+  box-shadow:
+          inset 0 2px 5px rgba(0, 0, 0, 0.6),
+          inset 0 -1px 1px rgba(255, 255, 255, 0.1) !important;
+}
+
+/* =================================================================
+   📻 1. ElRadioGroup & ElRadioButton 全局磨砂 / 液态水晶化
+   ================================================================= */
+/* 整体底槽：像是在玻璃面板上镂空雕刻出的胶囊凹槽 */
+.el-radio-group {
+  background: rgba(0, 0, 0, 0.05) !important;
+  padding: 4px !important;
+  border-radius: 12px !important;
+  border: 1px solid var(--glass-border) !important;
+  backdrop-filter: blur(8px);
+  display: inline-flex;
+  gap: 4px; /* 留出呼吸空隙 */
+}
+html.dark .el-radio-group {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* 单个按钮重置 */
+.el-radio-button__inner {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+  color: var(--el-text-color-regular) !important;
+  padding: 8px 16px !important;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+.el-radio-button__inner:hover {
+  color: var(--el-color-primary) !important;
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* 选中态 —— 磨砂预设：通透悬浮微白药丸 */
+.el-radio-button.is-active .el-radio-button__inner {
+  background: rgba(255, 255, 255, 0.8) !important;
+  color: var(--el-color-primary) !important;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), inset 0 1px 1px #fff !important;
+}
+html.dark .el-radio-button.is-active .el-radio-button__inner {
+  background: rgba(255, 255, 255, 0.15) !important;
+  color: #60a5fa !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.1) !important;
+}
+
+/* 选中态 —— 💧 液态水晶预设：饱满Q弹的露珠气泡 */
+html.preset-liquid .el-radio-group {
+  background: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: inset 0 2px 5px rgba(0,0,0,0.08), inset 0 -1px 1px rgba(255,255,255,0.6) !important;
+}
+html.dark.preset-liquid .el-radio-group {
+  background: rgba(0, 0, 0, 0.3) !important;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.6), inset 0 -1px 1px rgba(255,255,255,0.08) !important;
+}
+html.preset-liquid .el-radio-button.is-active .el-radio-button__inner {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0.2) 100%) !important;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 4px 10px rgba(31, 38, 135, 0.1) !important;
+}
+html.dark.preset-liquid .el-radio-button.is-active .el-radio-button__inner {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.05) 100%) !important;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2), 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+}
+
+
+/* =================================================================
+   📊 2. ElTable & ElTableColumn 全局极致穿透化 (终极光学修复版)
+   ================================================================= */
+
+/* 大表格容器 */
+.el-table,
+.el-table__expanded-cell {
+  background-color: transparent !important;
+  --el-table-bg-color: transparent !important;
+  --el-table-tr-bg-color: transparent !important;
+  --el-table-header-bg-color: transparent !important;
+  --el-table-row-hover-bg-color: rgba(128, 128, 128, 0.08) !important;
+
+  /* 🔥 修复白线Bug：将表格线独立解耦！白天用极雅铅笔灰(0.08黑)，黑夜用通透月光银 */
+  --el-table-border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+html.dark .el-table,
+html.dark .el-table__expanded-cell {
+  --el-table-border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* 表头(th) */
+.el-table th.el-table__cell {
+  background-color: rgba(0, 0, 0, 0.03) !important; /* 白天表头微灰压实基准 */
+  backdrop-filter: blur(8px);
+  color: var(--el-text-color-primary) !important;
+  font-weight: 700;
+  border-bottom: 1px solid var(--el-table-border-color) !important;
+  box-sizing: border-box !important;
+}
+html.dark .el-table th.el-table__cell {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* 数据行与单元格 */
+.el-table tr { background-color: transparent !important; }
+.el-table td.el-table__cell {
+  border-bottom: 1px solid var(--el-table-border-color) !important;
+  box-sizing: border-box !important;
+}
+
+/* 斑马纹行(Stripe) */
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background: rgba(0, 0, 0, 0.02) !important;
+}
+html.dark .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+
+/* 悬停行(Hover) */
+.el-table__body tr:hover > td.el-table__cell {
+  background-color: rgba(128, 128, 128, 0.1) !important;
+  transition: background-color 0.2s ease;
+}
+
+/* 彻底消灭原生实线补丁 */
+.el-table__inner-wrapper::before,
+.el-table::before, .el-table::after, .el-table__border-left-patch { display: none !important; }
+
+/* 🔥 核心绝杀（修复向左滚错位）：
+   固定列（操作栏）赋予实体遮光板，并往左额外投射一缕高级悬浮阴影！ */
+.el-table .el-table__cell.is-fixed-right,
+.el-table .el-table__cell.is-fixed-left {
+  z-index: 20 !important;
+  background: #ffffff !important; /* 白天：纯白遮光实体 */
+  box-shadow: -6px 0 12px -4px rgba(0, 0, 0, 0.08) !important; /* 悬浮侧影 */
+}
+
+html.dark .el-table .el-table__cell.is-fixed-right,
+html.dark .el-table .el-table__cell.is-fixed-left {
+  background: #1d1e1f !important; /* 黑夜：严格对齐你页面的深灰底色 */
+  box-shadow: -6px 0 15px -4px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* 开启硬件加速锁死 DOM 渲染轨道，防止手机端触控滚动时行高抖动 */
+.el-table__body-wrapper, .el-table__header-wrapper {
+  transform: translateZ(0);
+}
+
+/* 📱 手机端适配：稍微挪一下位置，别挡住刘海或左滑手势 */
+@media (max-width: 768px) {
+  .liquid-guide-btn {
+    top: 16px;
+    left: 16px;
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+}
+/* ✅ 修正媒体查询，只作为浅色模式兜底 */
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+  }
+  a:hover {
+    color: #747bff;
+  }
+  button {
+    background-color: #f9f9f9;
+  }
+}
+/* ======================
+🔥 style.css 手机端最终适配
+====================== */
+@media (max-width: 768px) {
+  /* 隐藏外部背景 */
+  html::before,
+  html::after,
+  body::before {
+    display: none !important;
+  }
+  /* #app 铺满全屏 */
+  #app {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    height: 100vh !important;
+  }
+  /* 禁止页面滚动留白 */
+  html, body {
+    overflow: hidden !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}

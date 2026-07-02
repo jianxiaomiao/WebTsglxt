@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    // 把目标版本设为 ES2015 及以上（支持 Map/Set）
+    "target": "ES2015",
+    // 引入 ES2015 内置类型 + DOM 类型（适配浏览器环境）
+    "lib": ["ES2015", "DOM"],
+    // 其他基础配置（按需保留）
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "jsx": "preserve",
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  // 指定需要编译的文件范围（覆盖项目源码）
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}
