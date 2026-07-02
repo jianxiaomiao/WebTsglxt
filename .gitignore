@@ -59,3 +59,4 @@ logs/
 # package-lock (由 npm 自动生成，不需提交)
 # ============================================
 package-lock.json
+out/
