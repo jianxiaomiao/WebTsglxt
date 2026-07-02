@@ -887,7 +887,7 @@ onMounted(async () => {
                   :class="{ dark: isDark }"
                   border
               >
-                {{ type.bookType }}
+                {{ type.typeName }}
               </ElRadio>
             </ElRadioGroup>
           </div>
@@ -909,7 +909,7 @@ onMounted(async () => {
                   :class="{ dark: isDark }"
                   border
               >
-                {{ tag.tagName }}
+                {{ tag.name }}
               </ElCheckbox>
             </ElCheckboxGroup>
           </div>

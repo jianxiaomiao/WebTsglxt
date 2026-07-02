@@ -478,6 +478,12 @@ const deptTypeList = ref([])
 // 消息未读
 const chatUnreadCount = ref(0)
 const messageUnreadCount = ref(0)
+
+// ✅ 聚合接口未读状态
+const unreadCount = ref(0)
+const unreadNotifyCount = ref(0)
+const unreadRequestCount = ref(0)
+
 // ✅ 新增：全局消息/好友申请状态
 const friendRequests = ref([])
 const sentRequests = ref([])
@@ -2685,8 +2691,8 @@ onMounted(() => {
       if (data.userTypes) userTypeList.value = data.userTypes
       if (data.deptTypes) deptTypeList.value = data.deptTypes
       if (data.friends) friendList.value = data.friends
-      if (data.friendRequests) receivedRequests.value = data.friendRequests
-      if (data.notifications) notificationList.value = data.notifications
+      if (data.friendRequests) friendRequests.value = data.friendRequests
+      if (data.notifications) notifications.value = data.notifications
       if (data.unread) {
         unreadCount.value = data.unread.total
         unreadNotifyCount.value = data.unread.notifications
@@ -3470,7 +3476,7 @@ const resetCaptureState = () => {
                     :class="{ dark: isDark }"
                     border
                 >
-                  {{ type.bookType }}
+                  {{ type.typeName }}
                 </ElRadio>
               </ElRadioGroup>
             </div>
@@ -3492,7 +3498,7 @@ const resetCaptureState = () => {
                     :class="{ dark: isDark }"
                     border
                 >
-                  {{ tag.tagName }}
+                  {{ tag.name }}
                 </ElCheckbox>
               </ElCheckboxGroup>
             </div>

@@ -309,7 +309,7 @@
                   <div v-show="isCategoryExpanded" style="padding-top: 8px;">
                     <ElRadioGroup v-model="selectedTypeId" @change="handleSelectType" class="four-grid-group">
                       <ElRadio v-for="type in bookTypeList" :key="type.id" :label="type.id" class="grid-radio-item" :class="{ dark: isDark }">
-                        {{ type.bookType }}
+                        {{ type.typeName }}
                       </ElRadio>
                     </ElRadioGroup>
                   </div>
@@ -357,7 +357,7 @@
 
                   <div class="planet-body" :class="`planet-style-${planet.styleIndex}`">
                     <div class="planet-glow"></div>
-                    <span class="planet-name">{{ planet.type.bookType }}</span>
+                    <span class="planet-name">{{ planet.type.typeName }}</span>
                   </div>
 
                   <div v-for="(book, idx) in planet.previewBooks.slice(0, 3)" :key="`${planet.id}-sat-${idx}`" class="satellite-orbit" :class="`orbit-${idx + 1}`">
