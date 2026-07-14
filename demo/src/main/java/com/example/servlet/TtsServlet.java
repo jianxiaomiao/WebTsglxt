@@ -90,6 +90,27 @@ public class TtsServlet extends BaseServlet {
             logger.info("【TTS 后端】生成语音: voice={}, text长度={}, cache={}", voice, text.length(), cacheMode);
 
             if (cacheMode) {
+                String md5 = getMd5(text + ":" + voice);
+                String cacheKey = "tts:cache:" + md5;
+                try {
+                    if (com.example.util.RedisUtil.exists(cacheKey)) {
+                        String cachedUrl = com.example.util.RedisUtil.get(cacheKey);
+                        String cachedFileName = cachedUrl.substring(cachedUrl.indexOf("file=") + 5);
+                        Path cachedFilePath = Paths.get("D:/WebTsglxt/tts_cache", cachedFileName);
+                        if (Files.exists(cachedFilePath) && Files.size(cachedFilePath) > 0) {
+                            logger.info("⚡ 命中 TTS 单段音频缓存: {}", cachedUrl);
+                            JSONObject result = new JSONObject();
+                            result.put("url", cachedUrl);
+                            result.put("size", Files.size(cachedFilePath));
+                            resp.setContentType("application/json;charset=UTF-8");
+                            resp.getWriter().write(result.toJSONString());
+                            return;
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.warn("从 Redis 获取 TTS 缓存失败", e);
+                }
+
                 // 🔥 缓存模式：生成文件存到磁盘，返回URL（使用 --file 避免编码问题）
                 String fileName = "tts_" + text.hashCode() + "_" + System.currentTimeMillis() + ".mp3";
                 Path audioDir = Paths.get("D:/WebTsglxt/tts_cache");
@@ -111,8 +132,16 @@ public class TtsServlet extends BaseServlet {
                     int exitCode = process.waitFor();
 
                     if (exitCode == 0 && Files.size(audioPath) > 0) {
+                        String url = "/api/tts/cache?file=" + fileName;
+                        try {
+                            com.example.util.RedisUtil.set(cacheKey, url);
+                            com.example.util.RedisUtil.expire(cacheKey, 2592000); // 30天过期
+                        } catch (Exception e) {
+                            logger.warn("写入 Redis TTS 缓存失败", e);
+                        }
+
                         JSONObject result = new JSONObject();
-                        result.put("url", "/api/tts/cache?file=" + fileName);
+                        result.put("url", url);
                         result.put("size", Files.size(audioPath));
                         resp.setContentType("application/json;charset=UTF-8");
                         resp.getWriter().write(result.toJSONString());
@@ -176,6 +205,21 @@ public class TtsServlet extends BaseServlet {
         }
     }
 
+    private String getMd5(String input) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+            byte[] messageDigest = md.digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            java.math.BigInteger no = new java.math.BigInteger(1, messageDigest);
+            String hashtext = no.toString(16);
+            while (hashtext.length() < 32) {
+                hashtext = "0" + hashtext;
+            }
+            return hashtext;
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     /** POST /api/tts/batch — 并行批量生成多段 TTS 音频，按原序返回 */
     private void handleBatchGenerate(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         handleBatchGenerateWithBody(resp, req.getInputStream().readAllBytes());
@@ -224,6 +268,27 @@ public class TtsServlet extends BaseServlet {
                 final String fText = text;
                 java.util.concurrent.Future<?> f = ttsPool.submit(() -> {
                     try {
+                        String md5 = getMd5(fText + ":" + fVoice);
+                        String cacheKey = "tts:cache:" + md5;
+                        try {
+                            if (com.example.util.RedisUtil.exists(cacheKey)) {
+                                String cachedUrl = com.example.util.RedisUtil.get(cacheKey);
+                                String cachedFileName = cachedUrl.substring(cachedUrl.indexOf("file=") + 5);
+                                Path cachedFilePath = audioDir.resolve(cachedFileName);
+                                if (Files.exists(cachedFilePath) && Files.size(cachedFilePath) > 0) {
+                                    logger.info("⚡ 命中 TTS 批量音频缓存, 段{}: {}", index, cachedUrl);
+                                    synchronized (sseOut) {
+                                        sseOut.write("event: segment\ndata: {\"index\":" + index +
+                                                ",\"url\":\"" + cachedUrl + "\"}\n\n");
+                                        sseOut.flush();
+                                    }
+                                    return;
+                                }
+                            }
+                        } catch (Exception e) {
+                            logger.warn("从 Redis 获取 TTS 批量缓存失败", e);
+                        }
+
                         String fileName = "tts_batch_" + fText.hashCode() + "_" + index + "_" +
                                 System.currentTimeMillis() + ".mp3";
                         Path audioPath = audioDir.resolve(fileName);
@@ -242,6 +307,12 @@ public class TtsServlet extends BaseServlet {
                             String url = null;
                             if (exitCode == 0 && Files.size(audioPath) > 0) {
                                 url = "/api/tts/cache?file=" + fileName;
+                                try {
+                                    com.example.util.RedisUtil.set(cacheKey, url);
+                                    com.example.util.RedisUtil.expire(cacheKey, 2592000); // 30天过期
+                                } catch (Exception e) {
+                                    logger.warn("写入 Redis TTS 缓存失败", e);
+                                }
                             }
                             // SSE 推送：生成完一段立即发送
                             synchronized (sseOut) {
@@ -258,12 +329,13 @@ public class TtsServlet extends BaseServlet {
                             sseOut.flush();
                         }
                         logger.error("【TTS 批量】段{}异常", index, e);
-                    }
-                    int done = completed.incrementAndGet();
-                    if (done >= total) {
-                        synchronized (sseOut) {
-                            sseOut.write("event: done\ndata: {\"total\":" + total + "}\n\n");
-                            sseOut.flush();
+                    } finally {
+                        int done = completed.incrementAndGet();
+                        if (done >= total) {
+                            synchronized (sseOut) {
+                                sseOut.write("event: done\ndata: {\"total\":" + total + "}\n\n");
+                                sseOut.flush();
+                            }
                         }
                     }
                 });

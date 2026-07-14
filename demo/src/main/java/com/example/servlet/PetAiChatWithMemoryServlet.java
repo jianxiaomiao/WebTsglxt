@@ -14,6 +14,7 @@ import com.example.service.impl.BookServiceImpl;
 import com.example.service.impl.ChatMessageServiceImpl;
 import com.example.util.AiRateLimiter;
 import com.example.util.UserBehaviorLogger;
+import com.example.util.RedisUtil;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -166,7 +167,8 @@ public class PetAiChatWithMemoryServlet extends BaseServlet {
 
             logger.info("===== 新聊天请求 =====");
             logger.info("用户ID：{}，用户问题：{}", userId, content);
-            aiChatDao.add(new UserAiChat(userId, content, messageType, LocalDateTime.now(),0));
+            UserAiChat userChat = new UserAiChat(userId, content, messageType, LocalDateTime.now(), 0);
+            saveChatAndCache(userId, userChat);
             extractUserPreference(userId, content);
             // ❌ 删除这行重复的初始推送
             // pushThinking(userId, "🤔 正在理解你的问题");
@@ -178,7 +180,8 @@ public class PetAiChatWithMemoryServlet extends BaseServlet {
             pushThinkingDone(userId);
 
             // 保存聊天记录
-            aiChatDao.add(new UserAiChat(userId, finalReply, 1, LocalDateTime.now(),1));
+            UserAiChat aiReply = new UserAiChat(userId, finalReply, 1, LocalDateTime.now(), 1);
+            saveChatAndCache(userId, aiReply);
 
             // ✅ 正常返回最终JSON结果
             out.write(JSON.toJSONString(ResultDTO.success(finalReply)));
@@ -224,11 +227,67 @@ public class PetAiChatWithMemoryServlet extends BaseServlet {
         MessageSseServlet.sendMessageToUser(userId, doneMsg.toJSONString());
     }
 
+    // 保存 AI 聊天记录到数据库和 Redis 列表缓存中
+    private void saveChatAndCache(String userId, UserAiChat chat) {
+        try {
+            aiChatDao.add(chat);
+        } catch (Exception e) {
+            logger.error("保存 AI 对话到数据库失败", e);
+        }
+        try {
+            String memoryKey = "ai:chat:memory:" + userId;
+            // 只有缓存存在时才做增量写入，否则下一次 handleChat 会懒加载
+            if (RedisUtil.exists(memoryKey)) {
+                RedisUtil.lpush(memoryKey, JSON.toJSONString(chat));
+                RedisUtil.ltrim(memoryKey, 0, MEMORY_LIMIT - 1);
+                RedisUtil.expire(memoryKey, 1800); // 缓存 30 分钟
+            }
+        } catch (Exception e) {
+            logger.warn("写入 AI 对话到 Redis 缓存失败", e);
+        }
+    }
+
+    // 从 Redis 缓存或数据库中获取最近的聊天记忆
+    private List<UserAiChat> getRecentMemoryWithCache(String userId) {
+        String memoryKey = "ai:chat:memory:" + userId;
+        try {
+            if (RedisUtil.exists(memoryKey)) {
+                List<String> list = RedisUtil.lrange(memoryKey, 0, -1);
+                List<UserAiChat> memory = new ArrayList<>();
+                for (String s : list) {
+                    memory.add(JSON.parseObject(s, UserAiChat.class));
+                }
+                logger.info("⚡ 命中 AI 聊天记忆 Redis 缓存，用户：{}，条数: {}", userId, memory.size());
+                return memory;
+            }
+        } catch (Exception e) {
+            logger.warn("从 Redis 获取 AI 聊天记忆缓存失败", e);
+        }
+
+        // 缓存不命中，查数据库
+        List<UserAiChat> memory = aiChatDao.selectRecentMemory(userId, MEMORY_LIMIT);
+
+        // 回写缓存
+        try {
+            if (memory != null && !memory.isEmpty()) {
+                // selectRecentMemory 是按 id DESC 排序，最新的在最前
+                // 遍历时 rpush 会使最新的在 Redis List 的头部（索引 0）
+                for (UserAiChat chat : memory) {
+                    RedisUtil.rpush(memoryKey, JSON.toJSONString(chat));
+                }
+                RedisUtil.expire(memoryKey, 1800); // 缓存 30 分钟
+            }
+        } catch (Exception e) {
+            logger.warn("回写 AI 聊天记忆到 Redis 失败", e);
+        }
+        return memory;
+    }
+
     // 🔥 新增：最大工具调用轮次，防止死循环
     private static final int MAX_TOOL_ROUNDS = 3;
 
     private String handleChat(String userId, String question, String scene, Integer messageType) throws Exception {
-        List<UserAiChat> memory = aiChatDao.selectRecentMemory(userId, MEMORY_LIMIT);
+        List<UserAiChat> memory = getRecentMemoryWithCache(userId);
         String currentInput = question;
         boolean isFirstRound = true;
         // 🔥 新增：记录已执行的工具调用历史，传给AI避免重复

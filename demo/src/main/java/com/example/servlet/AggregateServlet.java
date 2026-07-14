@@ -91,20 +91,50 @@ public class AggregateServlet extends BaseServlet {
 
     private Map<String, Object> fetchUnreadCount(String userId) {
         Map<String, Object> unread = new LinkedHashMap<>();
+        String hashKey = "user:unread:" + userId;
         try {
-            // 未读通知数
-            int notifyCount = DBUtil.executeQueryScalar(
-                    "SELECT COUNT(*) FROM user_notification WHERE user_id=? AND is_read=0",
-                    Integer.class, userId);
-            // 未读消息数（好友请求）
-            int requestCount = DBUtil.executeQueryScalar(
-                    "SELECT COUNT(*) FROM friend_request WHERE to_user_id=? AND status=0",
-                    Integer.class, userId);
+            // 如果缓存不存在，从数据库查询并初始化 Redis
+            if (!RedisUtil.exists(hashKey)) {
+                int notifyCount = DBUtil.executeQueryScalar(
+                        "SELECT COUNT(*) FROM user_notification WHERE user_id=? AND is_read=0",
+                        Integer.class, userId);
+                int requestCount = DBUtil.executeQueryScalar(
+                        "SELECT COUNT(*) FROM friend_request WHERE to_user_id=? AND status=0",
+                        Integer.class, userId);
+                RedisUtil.hset(hashKey, "notifications", String.valueOf(notifyCount));
+                RedisUtil.hset(hashKey, "friendRequests", String.valueOf(requestCount));
+                RedisUtil.expire(hashKey, 86400); // 缓存 1 天自动失效
+
+                unread.put("notifications", notifyCount);
+                unread.put("friendRequests", requestCount);
+                unread.put("total", notifyCount + requestCount);
+                return unread;
+            }
+
+            // 从 Redis 获取未读计数
+            String notifyStr = RedisUtil.hget(hashKey, "notifications");
+            String requestStr = RedisUtil.hget(hashKey, "friendRequests");
+            int notifyCount = notifyStr != null ? Integer.parseInt(notifyStr) : 0;
+            int requestCount = requestStr != null ? Integer.parseInt(requestStr) : 0;
+
             unread.put("notifications", notifyCount);
             unread.put("friendRequests", requestCount);
             unread.put("total", notifyCount + requestCount);
-        } catch (SQLException e) {
-            logger.warn("查询未读数失败", e);
+        } catch (Exception e) {
+            logger.warn("从 Redis 获取未读数失败，降级查询数据库", e);
+            try {
+                int notifyCount = DBUtil.executeQueryScalar(
+                        "SELECT COUNT(*) FROM user_notification WHERE user_id=? AND is_read=0",
+                        Integer.class, userId);
+                int requestCount = DBUtil.executeQueryScalar(
+                        "SELECT COUNT(*) FROM friend_request WHERE to_user_id=? AND status=0",
+                        Integer.class, userId);
+                unread.put("notifications", notifyCount);
+                unread.put("friendRequests", requestCount);
+                unread.put("total", notifyCount + requestCount);
+            } catch (SQLException sqle) {
+                logger.error("数据库降级查询未读数也失败了", sqle);
+            }
         }
         return unread;
     }

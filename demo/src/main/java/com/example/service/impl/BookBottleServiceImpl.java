@@ -127,27 +127,87 @@ public class BookBottleServiceImpl implements BookBottleService {
      */
     @Override
     public ResultDTO<BookBottle> randomGetBottle(String isbn, String loginUserId) {
-        try {
-            // 1. 查询符合条件的随机瓶子（已自动过滤已捞取、自己发布的）
-            List<BookBottle> bottleList = bottleDao.getRandomBottle(isbn, loginUserId);
-            if (bottleList.isEmpty()) {
-                return ResultDTO.fail("当前书籍暂无可捞取的漂流瓶");
-            }
-            BookBottle target = bottleList.get(0);
+        if (isbn == null || isbn.trim().isEmpty() || loginUserId == null || loginUserId.trim().isEmpty()) {
+            return ResultDTO.paramError("参数不能为空");
+        }
 
-            // 2. 插入捞取记录（联合唯一索引保证不会重复捞取）
+        String poolKey = "bottles:pool:" + isbn;
+        try {
+            // 1. 如果缓存不存在，预热加载所有当前可捞取的漂流瓶ID
+            if (!com.example.util.RedisUtil.exists(poolKey)) {
+                List<Integer> allIds = bottleDao.queryAllActiveBottleIds(isbn);
+                if (allIds != null && !allIds.isEmpty()) {
+                    String[] idStrs = allIds.stream().map(String::valueOf).toArray(String[]::new);
+                    com.example.util.RedisUtil.sadd(poolKey, idStrs);
+                    // 设置一个过期时间，比如 6 小时（21600 秒），防止过期漂流瓶一直留在Redis
+                    com.example.util.RedisUtil.expire(poolKey, 21600);
+                }
+            }
+
+            // 2. 从集合中随机获取瓶子，校验是否合格（不能是自己发的，自己没捞过）
+            // 设置最大尝试次数为 10 次，防止无限循环
+            int attempts = 0;
+            BookBottle target = null;
+            while (attempts < 10) {
+                String randomIdStr = com.example.util.RedisUtil.srandmember(poolKey);
+                if (randomIdStr == null || randomIdStr.isEmpty()) {
+                    break; // 池中已经空了
+                }
+
+                Integer bottleId = Integer.parseInt(randomIdStr);
+                // 查询具体瓶子，校验是否符合随机捞取规则
+                List<BookBottle> matchedList = bottleDao.queryById(bottleId);
+                if (matchedList == null || matchedList.isEmpty()) {
+                    // 说明数据库已经删除了该瓶子，从 Redis 集合中移出
+                    com.example.util.RedisUtil.srem(poolKey, randomIdStr);
+                    attempts++;
+                    continue;
+                }
+
+                BookBottle candidate = matchedList.get(0);
+                // 校验规则：不能是自己发布的，不能是已经捞过的，不能是过期/删除的
+                boolean valid = candidate.getIsDeleted() == 0
+                        && candidate.getStatus() == 0
+                        && candidate.getExpireTime().isAfter(LocalDateTime.now())
+                        && !candidate.getUserid().equals(loginUserId)
+                        && !pickDao.checkUserPicked(loginUserId, bottleId);
+
+                if (valid) {
+                    target = candidate;
+                    break;
+                } else {
+                    // 如果是因为已经捞过或者是自己发布的，不能从全局池删除，但继续尝试下一个
+                    attempts++;
+                }
+            }
+
+            // 3. 如果通过 Redis 尝试了10次依然没选出或者池子空了，兜底直接用原来的数据库 ORDER BY RAND() 查询一次
+            if (target == null) {
+                List<BookBottle> bottleList = bottleDao.getRandomBottle(isbn, loginUserId);
+                if (bottleList.isEmpty()) {
+                    return ResultDTO.fail("当前书籍暂无可捞取的漂流瓶");
+                }
+                target = bottleList.get(0);
+            }
+
+            // 4. 插入捞取记录
             BookBottlePick pick = new BookBottlePick();
             pick.setUserid(loginUserId);
             pick.setBottleId(target.getId());
             pick.setCreatetime(LocalDateTime.now());
             pickDao.addPick(pick);
 
-            // 3. 返回带最新捞取记录的完整瓶子信息
+            // 5. 返回最新瓶子信息
             List<BookBottle> newData = bottleDao.queryById(target.getId());
             return ResultDTO.success(newData.get(0));
+
         } catch (IllegalArgumentException e) {
             return ResultDTO.paramError(e.getMessage());
         } catch (RuntimeException e) {
+            // 捕获可能已经捞过的唯一键冲突异常
+            if (e.getMessage().contains("Duplicate entry") || e.getMessage().contains("uk_user_bottle")) {
+                return ResultDTO.fail("您已经捞取过这个漂流瓶了");
+            }
             return ResultDTO.fail("捞取漂流瓶失败：" + e.getMessage());
         }
     }

@@ -219,6 +219,16 @@ public class RedisUtil {
         }
     }
 
+    /** 将元素推入列表左侧 (头部) */
+    public static void lpush(String key, String value) {
+        try (Jedis jedis = getJedis()) {
+            jedis.lpush(key, value);
+        } catch (JedisException e) {
+            logger.error("Redis LPUSH 失败 key={}", key, e);
+            throw e;
+        }
+    }
+
     /** 修剪列表，仅保留指定区间内的元素 */
     public static void ltrim(String key, long start, long end) {
         try (Jedis jedis = getJedis()) {
@@ -235,6 +245,80 @@ public class RedisUtil {
             return jedis.lrange(key, start, end);
         } catch (JedisException e) {
             logger.error("Redis LRANGE 失败 key={}", key, e);
+            throw e;
+        }
+    }
+
+    // ====================== 哈希表操作 (Hash) ======================
+
+    /** 设置哈希表字段的值 */
+    public static void hset(String key, String field, String value) {
+        try (Jedis jedis = getJedis()) {
+            jedis.hset(key, field, value);
+        } catch (JedisException e) {
+            logger.error("Redis HSET 失败 key={}, field={}", key, field, e);
+            throw e;
+        }
+    }
+
+    /** 获取哈希表字段的值 */
+    public static String hget(String key, String field) {
+        try (Jedis jedis = getJedis()) {
+            return jedis.hget(key, field);
+        } catch (JedisException e) {
+            logger.error("Redis HGET 失败 key={}, field={}", key, field, e);
+            throw e;
+        }
+    }
+
+    /** 自增哈希表字段的值 */
+    public static long hincrBy(String key, String field, long value) {
+        try (Jedis jedis = getJedis()) {
+            return jedis.hincrBy(key, field, value);
+        } catch (JedisException e) {
+            logger.error("Redis HINCRBY 失败 key={}, field={}", key, field, e);
+            throw e;
+        }
+    }
+
+    // ====================== 集合操作 (Set) ======================
+
+    /** 向集合添加元素 */
+    public static void sadd(String key, String... members) {
+        try (Jedis jedis = getJedis()) {
+            jedis.sadd(key, members);
+        } catch (JedisException e) {
+            logger.error("Redis SADD 失败 key={}", key, e);
+            throw e;
+        }
+    }
+
+    /** 从集合移除元素 */
+    public static void srem(String key, String... members) {
+        try (Jedis jedis = getJedis()) {
+            jedis.srem(key, members);
+        } catch (JedisException e) {
+            logger.error("Redis SREM 失败 key={}", key, e);
+            throw e;
+        }
+    }
+
+    /** 随机获取集合中的一个元素 */
+    public static String srandmember(String key) {
+        try (Jedis jedis = getJedis()) {
+            return jedis.srandmember(key);
+        } catch (JedisException e) {
+            logger.error("Redis SRANDMEMBER 失败 key={}", key, e);
+            throw e;
+        }
+    }
+
+    /** 判断成员是否在集合中 */
+    public static boolean sismember(String key, String member) {
+        try (Jedis jedis = getJedis()) {
+            return jedis.sismember(key, member);
+        } catch (JedisException e) {
+            logger.error("Redis SISMEMBER 失败 key={}", key, e);
             throw e;
         }
     }

@@ -26,6 +26,11 @@ public class ChatWebSocket {
     public void onOpen(Session session, @PathParam("userId") String userId) {
         logger.info("用户 {} 建立WebSocket连接，SessionID: {}", userId, session.getId());
         ONLINE_SESSIONS.put(userId, session);
+        try {
+            com.example.util.RedisUtil.sadd("online:users", userId);
+        } catch (Exception e) {
+            logger.warn("WebSocket 连接写入 Redis 在线用户列表失败", e);
+        }
     }
 
     @OnMessage
@@ -49,11 +54,22 @@ public class ChatWebSocket {
     public void onClose(Session session, @PathParam("userId") String userId) {
         logger.info("用户 {} 断开WebSocket连接", userId);
         ONLINE_SESSIONS.remove(userId);
+        try {
+            com.example.util.RedisUtil.srem("online:users", userId);
+        } catch (Exception e) {
+            logger.warn("WebSocket 关闭从 Redis 移除在线用户失败", e);
+        }
     }
 
     @OnError
     public void onError(Session session, Throwable throwable, @PathParam("userId") String userId) {
         logger.error("用户 {} WebSocket连接出错", userId, throwable);
+        ONLINE_SESSIONS.remove(userId);
+        try {
+            com.example.util.RedisUtil.srem("online:users", userId);
+        } catch (Exception e) {
+            logger.warn("WebSocket 报错从 Redis 移除在线用户失败", e);
+        }
     }
 
     // ====================== 你要求保留的 主动推送方法 ======================

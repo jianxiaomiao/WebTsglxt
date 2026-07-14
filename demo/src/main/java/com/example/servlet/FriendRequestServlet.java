@@ -94,6 +94,11 @@ public class FriendRequestServlet extends BaseServlet {
                 // 同意好友申请
                 Integer requestId = Integer.parseInt(requestIdStr);
                 ResultDTO<Void> result = friendRequestService.acceptRequest(requestId, userId);
+                try {
+                    com.example.util.RedisUtil.del("user:unread:" + userId);
+                } catch (Exception e) {
+                    logger.warn("从 Redis 清理用户未读计数缓存失败", e);
+                }
                 out.write(JSON.toJSONString(result));
                 // ========== 新增：推送通知给 申请人 ==========
                 if (result.isSuccess()) {
@@ -108,6 +113,11 @@ public class FriendRequestServlet extends BaseServlet {
                 // 拒绝好友申请
                 Integer requestId = Integer.parseInt(requestIdStr);
                 ResultDTO<Void> result = friendRequestService.rejectRequest(requestId);
+                try {
+                    com.example.util.RedisUtil.del("user:unread:" + userId);
+                } catch (Exception e) {
+                    logger.warn("从 Redis 清理用户未读计数缓存失败", e);
+                }
                 out.write(JSON.toJSONString(result));
                 // ========== 新增：推送通知给 申请人 ==========
                 if (result.isSuccess()) {

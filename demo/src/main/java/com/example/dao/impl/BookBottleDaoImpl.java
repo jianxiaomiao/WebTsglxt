@@ -282,4 +282,16 @@ public class BookBottleDaoImpl implements BookBottleDao {
             return 0L;
         }
     }
+
+    @Override
+    public List<Integer> queryAllActiveBottleIds(String isbn) {
+        if (isbn == null || isbn.isBlank()) return Collections.emptyList();
+        String sql = "SELECT id FROM book_bottle WHERE isbn=? AND status=0 AND is_deleted=0 AND expire_time > NOW() AND audit_status=1";
+        try {
+            return DBUtil.executeQuery(sql, rs -> rs.getInt("id"), isbn);
+        } catch (SQLException e) {
+            logger.error("查询可捞取漂流瓶ID列表异常，ISBN:{}", isbn, e);
+            return Collections.emptyList();
+        }
+    }
 }

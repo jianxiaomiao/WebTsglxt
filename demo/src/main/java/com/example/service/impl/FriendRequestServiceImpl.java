@@ -1,16 +1,20 @@
 package com.example.service.impl;
 
-import java.time.LocalDateTime;
-import java.util.List;
-
 import com.example.dao.FriendDao;
 import com.example.dao.FriendRequestDao;
 import com.example.dto.ResultDTO;
 import com.example.entity.Friend;
 import com.example.entity.FriendRequest;
 import com.example.service.FriendRequestService;
+import com.example.util.RedisUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.time.LocalDateTime;
+import java.util.List;
 
 public class FriendRequestServiceImpl implements FriendRequestService {
+    private static final Logger logger = LoggerFactory.getLogger(FriendRequestServiceImpl.class);
     private final FriendRequestDao friendRequestDao;
     private final FriendDao friendDao; // 注入FriendDao，同意申请时添加好友
 
@@ -35,6 +39,15 @@ public class FriendRequestServiceImpl implements FriendRequestService {
             // 3. 发送申请
             FriendRequest request = new FriendRequest(fromUserId, toUserId, requestMsg, LocalDateTime.now());
             Integer requestId = friendRequestDao.add(request);
+            // 核心优化：自增 Redis 中的未读申请数
+            try {
+                String hashKey = "user:unread:" + toUserId;
+                if (RedisUtil.exists(hashKey)) {
+                    RedisUtil.hincrBy(hashKey, "friendRequests", 1);
+                }
+            } catch (Exception e) {
+                logger.warn("Redis 自增未读好友申请数异常", e);
+            }
             return ResultDTO.success(requestId);
         } catch (IllegalArgumentException e) {
             return ResultDTO.paramError(e.getMessage());

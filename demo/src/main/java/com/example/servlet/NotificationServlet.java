@@ -55,6 +55,11 @@ public class NotificationServlet extends BaseServlet {
                 }
                 Integer notificationId = Integer.parseInt(notificationIdStr);
                 ResultDTO<Void> result = notificationService.markNotificationRead(notificationId);
+                try {
+                    com.example.util.RedisUtil.del("user:unread:" + userId);
+                } catch (Exception e) {
+                    logger.warn("从 Redis 清理用户未读计数缓存失败", e);
+                }
                 out.write(JSON.toJSONString(result));
             }
             // 🔥 3. 批量标记所有未读通知为已读（核心新增）

@@ -33,6 +33,11 @@ public interface BookBottleDao {
     List<BookBottle> queryAvailableBottleByIsbnPage(String isbn, String loginUserId, int offset, int pageSize);
 
     /**
+     * 查询所有可捞取的漂流瓶 ID 列表（用于 Redis 预热）
+     */
+    List<Integer> queryAllActiveBottleIds(String isbn);
+
+    /**
      * 统计当前用户可捞取的漂流瓶总数（用于分页）
      */
     Long countAvailableByIsbn(String isbn, String loginUserId);

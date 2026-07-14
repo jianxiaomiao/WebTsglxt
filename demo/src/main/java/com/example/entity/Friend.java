@@ -13,6 +13,8 @@ public class Friend {
     private LocalDateTime createTime; // 成为好友的时间
     // ====================== 新增：好友用户名 ======================
     private String userName;
+    // ====================== 新增：好友在线状态 ======================
+    private Boolean isOnline;
 
     // 构造方法
     public Friend(String userId, String friendId, LocalDateTime createTime) {
@@ -49,9 +51,18 @@ public class Friend {
         this.userName = userName;
     }
 
+    // ====================== 新增在线状态 Getter/Setter ======================
+    public Boolean getIsOnline() {
+        return isOnline;
+    }
+
+    public void setIsOnline(Boolean isOnline) {
+        this.isOnline = isOnline;
+    }
+
     @Override
     public String toString() {
         return "Friend [id=" + id + ", userId=" + userId + ", friendId=" + friendId
-                + ", friendRemark=" + friendRemark + ", createTime=" + createTime + ", userName=" + userName + "]";
+                + ", friendRemark=" + friendRemark + ", createTime=" + createTime + ", userName=" + userName + ", isOnline=" + isOnline + "]";
     }
 }

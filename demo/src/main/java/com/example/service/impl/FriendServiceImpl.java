@@ -7,6 +7,7 @@ import com.example.dao.FriendDao;
 import com.example.dto.ResultDTO;
 import com.example.entity.Friend;
 import com.example.service.FriendService;
+import com.example.util.RedisUtil;
 
 public class FriendServiceImpl implements FriendService {
     private final FriendDao friendDao;
@@ -56,6 +57,16 @@ public class FriendServiceImpl implements FriendService {
     public ResultDTO<List<Friend>> getFriendList(String userId) {
         try {
             List<Friend> friends = friendDao.queryByUserId(userId);
+            if (friends != null && !friends.isEmpty()) {
+                for (Friend friend : friends) {
+                    try {
+                        boolean isOnline = RedisUtil.sismember("online:users", friend.getFriendId());
+                        friend.setIsOnline(isOnline);
+                    } catch (Exception e) {
+                        friend.setIsOnline(false); // 降级默认离线
+                    }
+                }
+            }
             return ResultDTO.success(friends);
         } catch (IllegalArgumentException e) {
             return ResultDTO.paramError(e.getMessage());
