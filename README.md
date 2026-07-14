@@ -1,4 +1,4 @@
-﻿# 📚 沉浸式图书阅读与交流书屋
+# 📚 沉浸式图书阅读与交流书屋
 
 > Immersive Book Reading & Communication Platform
 
@@ -11,11 +11,11 @@
 | 层级 | 技术选型 |
 |------|----------|
 | **前端** | Vue 3 (Composition API) + Vite + Element Plus + Pinia + Vue Router 4 |
-| **实时通信** | WebSocket (聊天) + SSE (通知推送) |
+| **实时通信** | WebSocket (实时私聊 & 在线同步) + SSE (红点通知推送) |
 | **知识图谱** | AntV X6 3.x + 8大官方插件 (Minimap / Snapline / History 等) |
 | **后端** | Java 21 + Jakarta Servlet 6.0 + Tomcat 11 |
 | **数据访问** | JDBC (HikariCP) + MyBatis |
-| **缓存** | Redis (Jedis) — 字典级缓存 + 分布式锁 |
+| **缓存 / 内存库** | Redis (Jedis) — String (验证码/限流/图书缓存/TTS路径) + List (SSE历史/AI记忆) + Hash (未读计数红点) + Set (随机匹配池/全局在线集合) + Lua 脚本分布式锁 |
 | **数据库** | MySQL 8.0 (`library_manager`, 42 张表, InnoDB) |
 | **AI / TTS** | 火山引擎豆包 (Doubao) + Edge-TTS (微软神经网络语音, 15 种音色) |
 | **构建** | Maven (后端) + Vite (前端) |
@@ -77,18 +77,19 @@
 │  │ Servlet  │ Service  │ DAO (JDBC)       │ │
 │  │ 40+ 控制器│ 30+ 服务  │ 45+ 数据访问     │ │
 │  └──────────┴──────────┴─────────────────┘ │
-│          HikariCP | MyBatis                │
-└──────────────────┬─────────────────────────┘
-                   │
-┌──────────────────┴─────────────────────────┐
-│              MySQL 8.0                      │
-│         library_manager (42 张表)            │
-└──────────────────┬─────────────────────────┘
-                   │
-┌──────────────────┴──────────┬──────────────┐
-│    火山引擎 (Doubao)         │   Edge-TTS    │
-│    Chat + Image API          │   15 种音色   │
-└──────────────────────────────┴──────────────┘
+│         HikariCP | MyBatis | Jedis         │
+└──────────┬───────────────────────┬─────────┘
+           │                       │
+┌──────────┴─────────┐   ┌─────────┴─────────┐
+│      MySQL 8.0     │   │      Redis 6+     │
+│  library_manager   │   │  多维缓存与并发锁  │
+│  (42 张表, InnoDB)  │   │  (String/List/Set)│
+└──────────┬─────────┘   └───────────────────┘
+           │
+┌──────────┴──────────┬──────────────┐
+│    火山引擎 (Doubao) │   Edge-TTS    │
+│    Chat + Image API  │   15 种音色   │
+└─────────────────────┴──────────────┘
 ```
 
 ---
@@ -140,6 +141,23 @@ redis.host=127.0.0.1
 redis.port=6379
 redis.password=123456
 ```
+
+### ⚡ Redis 缓存策略与 Key 规范
+
+为了提升系统的并发吞吐量并减轻 MySQL 的访问压力，项目在各核心层深度集成了 Redis 缓存。以下为目前系统已上线的缓存键（Key）规范：
+
+| 业务场景 | Redis 数据结构 | Redis 键（Key）规范 | 生效机制与过期时间 (TTL) |
+|---|---|---|---|
+| **邮箱验证码** | String | `EMAIL_CODE_<email>` | 5 分钟 (300s) 过期，注册成功主动删除 |
+| **登录防暴破限流** | String (INCR) | `login:fail:<username>` / `login:lock:<username>` | 锁定状态 10 分钟自动解锁 |
+| **图书详情旁路缓存** | String (JSON) | `book:isbn:<isbn>` | 缓存旁路 (Cache-Aside) 模式，增删改自动失效 |
+| **借阅超卖并发锁** | String | `lock:borrow:book:<isbn>` | 分布式排它锁，防止超借，用完自动释放 |
+| **共读舱聊天历史** | List | `chat:room:history:<roomId>` | 缓存最近 30 条消息，SSE 房间销毁时同步清理 |
+| **未读消息计数红点** | Hash | `user:unread:<userId>` | `notifications` 与 `friendRequests` 字段，增量自增/单点已读清空 |
+| **漂流瓶随机匹配池** | Set | `bottles:pool:<isbn>` | 预热加载非本人/可捞取的漂流瓶 ID 集合，随机匹配 |
+| **AI 宠物聊天上下文** | List | `ai:chat:memory:<userId>` | 缓存最近 5 轮 (10 条) 对话记忆，30分钟过期 |
+| **全局在线活跃状态** | Set | `online:users` | WebSocket 建立/断开时动态 `SADD`/`SREM` 追踪 |
+| **TTS 语音生成路径** | String | `tts:cache:<MD5(text:voice)>` | 缓存生成的音频文件路径，避免 Edge-TTS 重复生成 |
 
 ---
 
