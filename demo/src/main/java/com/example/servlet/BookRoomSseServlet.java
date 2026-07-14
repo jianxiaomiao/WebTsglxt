@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.example.dao.impl.BookReadRoomDaoImpl;
 import com.example.dto.ResultDTO;
 import com.example.service.impl.BookReadRoomServiceImpl;
+import com.example.util.RedisUtil;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,8 +24,7 @@ public class BookRoomSseServlet extends BaseServlet {
     // 1. 在线会话池：Map<房间号, Map<用户ID, SSE输出流>>
     private static final Map<Integer, Map<String, PrintWriter>> ROOM_SESSIONS = new ConcurrentHashMap<>();
 
-    // 🌟 优化二：房间历史消息缓存池（每个房间保留最近 30 条）
-    private static final Map<Integer, List<String>> ROOM_MESSAGE_HISTORY = new ConcurrentHashMap<>();
+    // 🌟 优化二：房间历史消息缓存池大小（每个房间保留最近 30 条）
     private static final int MAX_HISTORY_SIZE = 30;
 
     // 🌟 优化一：空房间延时销毁调度器（防抖线程池）
@@ -49,7 +49,6 @@ public class BookRoomSseServlet extends BaseServlet {
 
         // 1. 注册进房间池
         ROOM_SESSIONS.computeIfAbsent(roomId, k -> new ConcurrentHashMap<>()).put(userId, out);
-        ROOM_MESSAGE_HISTORY.computeIfAbsent(roomId, k -> new CopyOnWriteArrayList<>());
 
         logger.info("用户 [{}] 加入房间 #{}, 当前人数: {}", userId, roomId, ROOM_SESSIONS.get(roomId).size());
 
@@ -85,15 +84,16 @@ public class BookRoomSseServlet extends BaseServlet {
                             ScheduledFuture<?> future = SCHEDULER.schedule(() -> {
                                 // 10秒后复查，如果依然没人连进来，正式物理毁灭！
                                 if (!ROOM_SESSIONS.containsKey(roomId)) {
-                                    ROOM_MESSAGE_HISTORY.remove(roomId); // 清理内存
                                     try {
                                         // 像 BookReadRoomServlet 里那样初始化 Service
                                         BookReadRoomDaoImpl roomDao = new BookReadRoomDaoImpl();
                                         BookReadRoomServiceImpl roomService = new BookReadRoomServiceImpl(roomDao);
                                         roomService.deleteRoom(roomId);
                                         logger.info("💥 房间 #{} 连续10秒无人连接，已自动从数据库物理删除！", roomId);
+                                        // 清理 Redis 历史记录
+                                        RedisUtil.del("chat:room:history:" + roomId);
                                     } catch (Exception e) {
-                                        logger.error("自动删房失败", e);
+                                        logger.error("自动删房与清理缓存失败", e);
                                     }
                                     PENDING_DELETES.remove(roomId);
                                 }
@@ -116,10 +116,14 @@ public class BookRoomSseServlet extends BaseServlet {
     public static void broadcastToRoom(int roomId, String jsonMessage) {
         // 过滤：只有聊天和书摘卡片记入历史，系统名单包(ROOM_META)不记入
         if (jsonMessage.contains("\"CHAT\"") || jsonMessage.contains("\"NOTE_CARD\"")) {
-            List<String> history = ROOM_MESSAGE_HISTORY.computeIfAbsent(roomId, k -> new CopyOnWriteArrayList<>());
-            history.add(jsonMessage);
-            if (history.size() > MAX_HISTORY_SIZE) {
-                history.remove(0); // 超过30条，剔除最老的一条
+            String historyKey = "chat:room:history:" + roomId;
+            try {
+                RedisUtil.rpush(historyKey, jsonMessage);
+                RedisUtil.ltrim(historyKey, -MAX_HISTORY_SIZE, -1);
+                // 设置 1 天过期，防止僵尸房间占用内存
+                RedisUtil.expire(historyKey, 86400);
+            } catch (Exception e) {
+                logger.warn("保存聊天消息到 Redis 历史缓存失败", e);
             }
         }
 
@@ -134,7 +138,14 @@ public class BookRoomSseServlet extends BaseServlet {
 
     // 🔥 向新连接用户单独倾倒历史消息，并打上 isHistory 补丁
     private void sendHistoryMessagesToUser(int roomId, PrintWriter out) {
-        List<String> history = ROOM_MESSAGE_HISTORY.get(roomId);
+        String historyKey = "chat:room:history:" + roomId;
+        List<String> history = null;
+        try {
+            history = RedisUtil.lrange(historyKey, 0, -1);
+        } catch (Exception e) {
+            logger.warn("从 Redis 获取聊天历史失败", e);
+        }
+
         if (history == null || history.isEmpty()) return;
 
         for (String msgStr : history) {

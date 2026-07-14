@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.example.dto.ResultDTO;
 import com.example.util.EmailUtil;
+import com.example.util.RedisUtil;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,11 +43,9 @@ public class SendEmailServlet extends BaseServlet {
             String code = EmailUtil.generateCode();
             EmailUtil.sendEmailCode(email, code);
 
-            // 存入Session，5分钟有效期
-            HttpSession session = req.getSession();
+            // 存入 Redis，5分钟有效期（300秒）
             String emailKey = email.trim().toLowerCase();
-            session.setAttribute("EMAIL_CODE_" + emailKey, code);
-            session.setAttribute("EMAIL_CODE_TIME_" + emailKey, System.currentTimeMillis());
+            RedisUtil.set("EMAIL_CODE_" + emailKey, code, 300);
 
             resp.getWriter().write(JSON.toJSONString(ResultDTO.success("验证码发送成功")));
         } catch (Exception e) {

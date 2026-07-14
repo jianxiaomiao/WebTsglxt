@@ -12,6 +12,7 @@ import com.example.service.impl.UserInformationServiceImpl;
 import com.example.util.PasswordEncryptUtil;
 import com.example.util.UserBehaviorLogger;
 import com.example.util.LoginRateLimiter;
+import com.example.util.RedisUtil;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -204,25 +205,23 @@ public class RegisterAndLoginServlet extends BaseServlet {
                 return;
             }
 
-            HttpSession session = req.getSession();
-            // 校验验证码（RegisterAndLoginServlet 中替换）
-            String realCode = (String) session.getAttribute("EMAIL_CODE_" + email);
-            Long sendTime = (Long) session.getAttribute("EMAIL_CODE_TIME_" + email);
+            // 校验验证码（从 Redis 读取）
+            String emailKey = email.trim().toLowerCase();
+            String redisKey = "EMAIL_CODE_" + emailKey;
+            String realCode = RedisUtil.get(redisKey);
 
-            if (realCode == null || sendTime == null) {
+            if (realCode == null) {
                 out.write(JSON.toJSONString(ResultDTO.paramError("验证码已过期或未发送")));
                 return;
             }
-            // 自行判断 5 分钟有效期
-            if (System.currentTimeMillis() - sendTime > 5 * 60 * 1000) {
-                session.removeAttribute("EMAIL_CODE_" + email);
-                session.removeAttribute("EMAIL_CODE_TIME_" + email);
-                out.write(JSON.toJSONString(ResultDTO.paramError("验证码已过期")));
+
+            if (!realCode.equals(inputCode)) {
+                out.write(JSON.toJSONString(ResultDTO.paramError("验证码不正确")));
                 return;
             }
 
-            // 验证通过后，马上清空Session里的验证码，防止重复使用
-            session.removeAttribute("EMAIL_CODE_" + email);
+            // 验证通过后，马上清空 Redis 里的验证码，防止重复使用
+            RedisUtil.del(redisKey);
             // 3. 密码加密
             String salt = PasswordEncryptUtil.generateSalt();
             String encryptedPwd = PasswordEncryptUtil.encryptPassword(registerDTO.getPassword(), salt);

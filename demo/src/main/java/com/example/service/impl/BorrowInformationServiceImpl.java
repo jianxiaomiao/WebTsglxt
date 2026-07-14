@@ -4,10 +4,14 @@ import com.example.dao.BorrowInformationDao;
 import com.example.dto.ResultDTO;
 import com.example.entity.BorrowInformation;
 import com.example.service.BorrowInformationService;
+import com.example.util.RedisUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
 public class BorrowInformationServiceImpl implements BorrowInformationService {
+    private static final Logger logger = LoggerFactory.getLogger(BorrowInformationServiceImpl.class);
     private final BorrowInformationDao borrowInformationDao;
 
     public BorrowInformationServiceImpl(BorrowInformationDao borrowInformationDao) {
@@ -66,10 +70,18 @@ public class BorrowInformationServiceImpl implements BorrowInformationService {
 
     @Override
     public ResultDTO<Void> addBorrow(BorrowInformation borrow) {
+        if (borrow == null || borrow.getISBN() == null || borrow.getISBN().trim().isEmpty()) {
+            return ResultDTO.paramError("借阅信息/图书ISBN不能为空");
+        }
+
+        String lockKey = "lock:borrow:book:" + borrow.getISBN();
+        String lockValue = null;
         try {
-            if (borrow == null) {
-                return ResultDTO.paramError("借阅信息不能为空");
+            lockValue = RedisUtil.tryLock(lockKey, 10);
+            if (lockValue == null) {
+                return ResultDTO.fail("当前借书人数较多，请稍后重试");
             }
+
             // 可扩展：借阅前校验图书库存、用户借阅上限等业务规则
             borrowInformationDao.add(borrow);
             return ResultDTO.success(null);
@@ -77,6 +89,14 @@ public class BorrowInformationServiceImpl implements BorrowInformationService {
             return ResultDTO.paramError(e.getMessage());
         } catch (RuntimeException e) {
             return ResultDTO.fail("新增借阅信息失败：" + e.getMessage());
+        } finally {
+            if (lockValue != null) {
+                try {
+                    RedisUtil.unlock(lockKey, lockValue);
+                } catch (Exception e) {
+                    logger.warn("释放 Redis 借书分布式锁异常", e);
+                }
+            }
         }
     }
 

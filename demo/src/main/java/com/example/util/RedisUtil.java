@@ -197,6 +197,48 @@ public class RedisUtil {
         }
     }
 
+    /** 获取过期时间（秒），-2表示不存在，-1表示永不过期 */
+    public static long ttl(String key) {
+        try (Jedis jedis = getJedis()) {
+            return jedis.ttl(key);
+        } catch (JedisException e) {
+            logger.error("Redis TTL 失败 key={}", key, e);
+            throw e;
+        }
+    }
+
+    // ====================== 列表操作 (List) ======================
+
+    /** 将元素追加到列表右侧 */
+    public static void rpush(String key, String value) {
+        try (Jedis jedis = getJedis()) {
+            jedis.rpush(key, value);
+        } catch (JedisException e) {
+            logger.error("Redis RPUSH 失败 key={}", key, e);
+            throw e;
+        }
+    }
+
+    /** 修剪列表，仅保留指定区间内的元素 */
+    public static void ltrim(String key, long start, long end) {
+        try (Jedis jedis = getJedis()) {
+            jedis.ltrim(key, start, end);
+        } catch (JedisException e) {
+            logger.error("Redis LTRIM 失败 key={}", key, e);
+            throw e;
+        }
+    }
+
+    /** 获取列表指定区间内的元素 */
+    public static java.util.List<String> lrange(String key, long start, long end) {
+        try (Jedis jedis = getJedis()) {
+            return jedis.lrange(key, start, end);
+        } catch (JedisException e) {
+            logger.error("Redis LRANGE 失败 key={}", key, e);
+            throw e;
+        }
+    }
+
     // ====================== 计数器 ======================
 
     /** 自增 +1，返回新值 */

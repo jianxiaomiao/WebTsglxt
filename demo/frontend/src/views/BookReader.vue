@@ -3459,7 +3459,7 @@ onBeforeRouteLeave((to, from, next) => {
               <div style="padding: 16px; background: #f7f8fa; border-radius: 16px; min-height: 80px; border: 1px solid #e5e7eb;"><p style="margin: 0; color: #333; line-height: 1.6;">{{ selectedText || '未选中文本' }}</p></div>
               <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">
                 <span style="color: #666; margin-right: 8px; align-self: center;">选择类型：</span>
-                <ElTag v-for="type in noteTypeList" :key="type?.id" :type="selectedNoteType === type.id ? 'success' : 'default'" effect="plain" style="border-radius: 16px; padding: 6px 14px; cursor: pointer; font-size: 14px;" @click="selectedNoteType = type.id">{{ type?.userTextColType || '未知类型' }}</ElTag>
+                <ElTag v-for="type in noteTypeList" :key="type?.id" :type="selectedNoteType === type.id ? 'success' : 'default'" effect="plain" style="border-radius: 16px; padding: 6px 14px; cursor: pointer; font-size: 14px;" @click="selectedNoteType = type.id">{{ type?.typeName || '未知类型' }}</ElTag>
               </div>
               <ElInput v-model="readerCommentInput" type="textarea" :rows="3" placeholder="写下你的个人批注（可选，最多200字）" style="width: 100%;" maxlength="200" show-word-limit />
               <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">

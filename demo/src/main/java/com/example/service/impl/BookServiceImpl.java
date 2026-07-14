@@ -1,6 +1,7 @@
 package com.example.service.impl;
 
 // 需要引入的包：
+import com.alibaba.fastjson.JSON;
 import com.example.dao.BookInformationDao;
 import com.example.dto.PageResultDTO;
 import com.example.dto.ResultDTO;
@@ -8,6 +9,7 @@ import com.example.entity.BookInformation;
 import com.example.service.BookService;
 import com.example.util.EmojiUtils;
 import com.example.util.MingZhuNovelCrawler;
+import com.example.util.RedisUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -48,8 +50,30 @@ public class BookServiceImpl implements BookService {
 
     @Override
     public ResultDTO<List<BookInformation>> queryBookByISBN(String isbn) {
+        if (isbn == null || isbn.trim().isEmpty()) {
+            return ResultDTO.paramError("ISBN 不能为空");
+        }
+        String cacheKey = "book:isbn:" + isbn;
+        try {
+            String cached = RedisUtil.get(cacheKey);
+            if (cached != null) {
+                logger.info("⚡ 命中书籍详情 Redis 缓存: {}", cacheKey);
+                List<BookInformation> books = JSON.parseArray(cached, BookInformation.class);
+                return ResultDTO.success(books);
+            }
+        } catch (Exception e) {
+            logger.warn("查询书籍详情 Redis 缓存失败", e);
+        }
+
         try {
             List<BookInformation> books = bookDao.queryByISBN(isbn);
+            if (books != null && !books.isEmpty()) {
+                try {
+                    RedisUtil.set(cacheKey, JSON.toJSONString(books), 3600);
+                } catch (Exception e) {
+                    logger.warn("写入书籍详情 Redis 缓存失败", e);
+                }
+            }
             return ResultDTO.success(books);
         } catch (IllegalArgumentException e) {
             return ResultDTO.paramError(e.getMessage());
@@ -101,6 +125,11 @@ public class BookServiceImpl implements BookService {
     public ResultDTO<Void> deleteBook(String isbn) {
         try {
             bookDao.del(isbn);
+            try {
+                RedisUtil.del("book:isbn:" + isbn);
+            } catch (Exception e) {
+                logger.warn("清理删除书籍 Redis 缓存失败", e);
+            }
             return ResultDTO.success(null);
         } catch (IllegalArgumentException e) {
             return ResultDTO.paramError(e.getMessage());
@@ -116,6 +145,11 @@ public class BookServiceImpl implements BookService {
             book.setBookname(EmojiUtils.addRandomEmoji(book.getBookname()));
             book.setPublisher(EmojiUtils.addRandomEmoji(book.getPublisher()));
             bookDao.update(book);
+            try {
+                RedisUtil.del("book:isbn:" + book.getISBN());
+            } catch (Exception e) {
+                logger.warn("清理修改书籍 Redis 缓存失败", e);
+            }
             return ResultDTO.success(null);
         } catch (IllegalArgumentException e) {
             return ResultDTO.paramError(e.getMessage());
@@ -128,6 +162,11 @@ public class BookServiceImpl implements BookService {
     public ResultDTO<Void> updateBookStock(BookInformation book) {
         try {
             bookDao.update(book);
+            try {
+                RedisUtil.del("book:isbn:" + book.getISBN());
+            } catch (Exception e) {
+                logger.warn("清理书籍库存修改 Redis 缓存失败", e);
+            }
             return ResultDTO.success(null);
         } catch (IllegalArgumentException e) {
             return ResultDTO.paramError(e.getMessage());
